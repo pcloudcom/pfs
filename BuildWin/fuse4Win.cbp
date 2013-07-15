@@ -17,7 +17,6 @@
 					<Add option="-Wall" />
 					<Add option="-g" />
 					<Add option="-DBUILD_DLL" />
-					<Add directory="D:/Dev/pfs/include" />
 				</Compiler>
 				<Linker>
 					<Add library="user32" />

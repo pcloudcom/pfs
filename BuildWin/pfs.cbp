@@ -14,9 +14,6 @@
 				<Option parameters="g: -d" />
 				<Compiler>
 					<Add option="-g" />
-					<Add directory="../include" />
-					<Add directory="../lib/Fuse4Win" />
-					<Add directory="../include/win" />
 				</Compiler>
 				<Linker>
 					<Add library=".\bin\Debug\libfuse4Win.a" />
@@ -39,7 +36,9 @@
 		</Build>
 		<Compiler>
 			<Add option="-Wall" />
-			<Add directory="D:/Dev/pfs/include" />
+			<Add directory="../include" />
+			<Add directory="../lib/Fuse4Win" />
+			<Add directory="../include/win" />
 		</Compiler>
 		<Linker>
 			<Add library="libWs2_32.a" />
