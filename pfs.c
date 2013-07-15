@@ -1064,7 +1064,7 @@ static void schedule_readahead_finished(void *_pf, binresult *res){
   pf=(pagefile *)_pf;
   page=pf->page;
   of=pf->of;
-  debug("schedule_readahead_finished in\n");
+//  debug("schedule_readahead_finished in\n");
   if (!res){
 //    debug("schedule_readahead_finished no res!\n");
     goto err;
@@ -1099,10 +1099,10 @@ static void schedule_readahead_finished(void *_pf, binresult *res){
   pthread_mutex_unlock(&pageslock);
   dec_openfile_refcnt(of);
   free(pf);
-  debug("schedule_readahead_finished out OK\n");
+//  debug("schedule_readahead_finished out OK\n");
   return;
 err:
-  debug("schedule_readahead_finished failed! NC error\n");
+//  debug("schedule_readahead_finished failed! NC error\n");
   of->error=NOT_CONNECTED_ERR;
   pthread_mutex_lock(&pageslock);
   list_del(page);
@@ -1115,7 +1115,7 @@ err:
   pthread_mutex_unlock(&pageslock);
   dec_openfile_refcnt(of);
   free(pf);
-  debug("schedule_readahead_finished out Err\n");
+//  debug("schedule_readahead_finished out Err\n");
 }
 
 static int schedule_readahead(openfile *of, off_t offset, size_t length, size_t lock_length){
