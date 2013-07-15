@@ -1,0 +1,9 @@
+#!/bin/bash
+
+
+cmd="gcc -Wall -O2 -Iinclude $1 -march=native -c lib/binapi.c"
+echo $cmd
+$cmd
+cmd="gcc -Wall -O2 -Iinclude $1 -march=native pfs.c `pkg-config fuse --cflags --libs` binapi.o -lssl -lpthread -lcrypto -o mount.pfs"
+echo $cmd
+$cmd
