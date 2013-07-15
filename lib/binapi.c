@@ -88,15 +88,18 @@ static ssize_t readallfd(int sock, void *ptr, size_t len){
 #if !defined(MINGW) && !defined(_WIN32)
     ret=read(sock, ptr+rd, len-rd);
 #else
-    ret=recv(sock, ptr+rd, len-rd, 0x8); //MSG_WAITALL
+    ret=recv(sock, ptr+rd, len-rd, 0);
 #endif
-    if (ret==0)
+    if (ret==0){
       return -1;
+    }
     else if (ret==-1){
-      if (errno==EINTR)
+      if (errno==EINTR){
         continue;
-      else
+      }
+      else{
         return -1;
+      }
     }
     rd+=ret;
   }
