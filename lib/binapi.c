@@ -1,8 +1,5 @@
 #include <sys/types.h>
-#include <sys/socket.h>
-#include <arpa/inet.h>
-#include <netinet/tcp.h>
-#include <netdb.h>
+#include "sockets.h"
 #include <stdlib.h>
 #include <unistd.h>
 #include <errno.h>
@@ -30,7 +27,7 @@
 #define RPARAM_BTRUE 19
 #define RPARAM_DATA 20
 /* 100-149 inclusive - strings 0-49 bytes in length without additional len parameter */
-#define RPARAM_SHORT_STR_BASE 100 
+#define RPARAM_SHORT_STR_BASE 100
 /* 150-199 inclusive - reused strings id 0-49 bytes in length without additional id parameter */
 #define RPARAM_SHORT_RSTR_BASE 150
 /* 200-219 inclusive - small numbers 0-19 */
@@ -49,7 +46,11 @@ static binresult BOOL_FALSE={PARAM_BOOL, 0, {0}};
 static int writeallfd(int sock, const void *ptr, size_t len){
   ssize_t res;
   while (len){
+#if !defined(MINGW) && !defined(_WIN32)
     res=write(sock, ptr, len);
+#else
+    res=send(sock, ptr, len, 0);
+#endif
     if (res==-1){
       if (errno==EINTR || errno==EAGAIN)
         continue;
@@ -84,7 +85,11 @@ static ssize_t readallfd(int sock, void *ptr, size_t len){
   ssize_t ret, rd;
   rd=0;
   while (rd<len){
+#if !defined(MINGW) && !defined(_WIN32)
     ret=read(sock, ptr+rd, len-rd);
+#else
+    ret=recv(sock, ptr+rd, len-rd, 0x8); //MSG_WAITALL
+#endif
     if (ret==0)
       return -1;
     else if (ret==-1){
@@ -445,7 +450,8 @@ binresult *do_send_command(apisock *sock, const char *command, size_t cmdlen, bi
 
 static int connect_res(struct addrinfo *res){
   int sock;
-  while ((sock=socket(res->ai_family, res->ai_socktype, res->ai_protocol))==-1 || connect(sock, res->ai_addr, res->ai_addrlen)==-1){
+  while ((sock=socket(res->ai_family, res->ai_socktype, res->ai_protocol))==-1 ||
+          connect(sock, res->ai_addr, res->ai_addrlen)==-1){
     if (sock!=-1)
       close(sock);
     if (res->ai_next)
@@ -460,7 +466,7 @@ static int connect_socket(const char *host, const char *port){
   struct addrinfo hints, *res=NULL;
   struct in6_addr serveraddr;
   int sock, rc;
-  
+
   memset(&hints, 0, sizeof(hints));
   hints.ai_flags=AI_NUMERICSERV;
   hints.ai_family=AF_UNSPEC;
@@ -473,7 +479,13 @@ static int connect_socket(const char *host, const char *port){
     hints.ai_family = AF_INET6;
     hints.ai_flags |= AI_NUMERICHOST;
   }
+
+#if !defined(MINGW) && !defined(_WIN32)
   rc=getaddrinfo(host, port, &hints, &res);
+#else
+  rc=getaddrinfo(host, port, NULL, &res);
+#endif
+
   if (rc!=0)
     return -1;
   sock=connect_res(res);

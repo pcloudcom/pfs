@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<CodeBlocks_project_file>
+	<FileVersion major="1" minor="6" />
+	<Project>
+		<Option title="fuse4Win" />
+		<Option pch_mode="2" />
+		<Option compiler="gcc" />
+		<Build>
+			<Target title="Debug">
+				<Option output="./bin/Debug/fuse4Win" prefix_auto="1" extension_auto="1" />
+				<Option object_output="obj/Debug/" />
+				<Option type="3" />
+				<Option compiler="gcc" />
+				<Option createDefFile="1" />
+				<Option createStaticLib="1" />
+				<Compiler>
+					<Add option="-Wall" />
+					<Add option="-g" />
+					<Add option="-DBUILD_DLL" />
+					<Add directory="D:/Dev/pfs/include" />
+				</Compiler>
+				<Linker>
+					<Add library="user32" />
+				</Linker>
+			</Target>
+			<Target title="Release">
+				<Option output="./bin/Release/fuse4Win" prefix_auto="1" extension_auto="1" />
+				<Option object_output="obj/Release/" />
+				<Option type="3" />
+				<Option compiler="gcc" />
+				<Option createDefFile="1" />
+				<Option createStaticLib="1" />
+				<Compiler>
+					<Add option="-Wall" />
+					<Add option="-DBUILD_DLL" />
+					<Add option="-O2" />
+				</Compiler>
+				<Linker>
+					<Add option="-s" />
+					<Add library="user32" />
+				</Linker>
+			</Target>
+		</Build>
+		<Compiler>
+			<Add directory="../include/win" />
+			<Add directory="../lib/Fuse4Win" />
+		</Compiler>
+		<Unit filename="../lib/Fuse4Win/FUSE4Win.h" />
+		<Unit filename="../lib/Fuse4Win/ScopeGuard.h" />
+		<Unit filename="../lib/Fuse4Win/docanfuse.cpp" />
+		<Unit filename="../lib/Fuse4Win/docanfuse.h" />
+		<Unit filename="../lib/Fuse4Win/dokan.h" />
+		<Unit filename="../lib/Fuse4Win/fuse_helpers.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../lib/Fuse4Win/fuse_opt.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../lib/Fuse4Win/fusemain.cpp" />
+		<Unit filename="../lib/Fuse4Win/fusemain.h" />
+		<Unit filename="../lib/Fuse4Win/utils.cpp" />
+		<Unit filename="../lib/Fuse4Win/utils.h" />
+		<Extensions>
+			<code_completion />
+			<envvars />
+			<debugger />
+			<lib_finder disable_auto="1" />
+		</Extensions>
+	</Project>
+</CodeBlocks_project_file>
