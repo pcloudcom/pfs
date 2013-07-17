@@ -55,7 +55,7 @@ int impl_fuse_context::do_open_dir(LPCWSTR FileName, PDOKAN_FILE_INFO DokanFileI
 		std::string fname=unixify(wchar_to_utf8_cstr(FileName));
 		CHECKED(ops_.opendir(fname.c_str(),&finfo));
 
-		DokanFileInfo->Context=reinterpret_cast<ULONG>(new impl_file_handle(fname,true,&finfo));
+		DokanFileInfo->Context=reinterpret_cast<ULONG64>(new impl_file_handle(fname,true,&finfo));
 		return 0;
 	}
 
@@ -76,7 +76,7 @@ int impl_fuse_context::do_open_file(LPCWSTR FileName, DWORD Flags,
 	finfo.flags=convert_flags(Flags);
 
 	CHECKED(ops_.open(fname.c_str(),&finfo));
-	DokanFileInfo->Context=reinterpret_cast<ULONG>(new impl_file_handle(fname,false,&finfo));
+	DokanFileInfo->Context=reinterpret_cast<ULONG64>(new impl_file_handle(fname,false,&finfo));
 	return 0;
 }
 
@@ -101,7 +101,7 @@ int impl_fuse_context::do_create_file(LPCWSTR FileName, DWORD Disposition, DWORD
 	finfo.flags=O_CREAT | O_EXCL | convert_flags(Flags); //TODO: these flags should be OK for new files?
 
 	CHECKED(ops_.create(fname.c_str(),filemask_,&finfo));
-	DokanFileInfo->Context=reinterpret_cast<ULONG>(new impl_file_handle(fname,false,&finfo));
+	DokanFileInfo->Context=reinterpret_cast<ULONG64>(new impl_file_handle(fname,false,&finfo));
 	return 0;
 }
 
@@ -637,7 +637,6 @@ int impl_fuse_context::get_disk_free_space(PULONGLONG free_bytes_available,
 	if (!ops_.statfs) return -EINVAL;
 
 	struct statvfs vfs={0};
-	//Why do we need path argument??
 	CHECKED(ops_.statfs("/",&vfs));
 
 	if (free_bytes_available!=NULL)

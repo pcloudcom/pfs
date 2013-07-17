@@ -157,7 +157,7 @@ int fuse_parse_cmdline(struct fuse_args *args, char **mountpoint,
 		return -1;
 
 	if (!hopts.fsname) {
-		res = add_default_fsname(args->argv[0], args);
+		res = add_default_fsname("PFS", args);
 		if (res == -1)
 			goto err;
 	}
@@ -199,7 +199,7 @@ int fuse_version(void)
 	return FUSE_VERSION;
 }
 
-#ifdef __CYGWIN__
+#if defined(__CYGWIN__) || defined(MINGW)
 static void exit_handler(int sig)
 {
 	(void) sig;

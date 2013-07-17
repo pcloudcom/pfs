@@ -18,11 +18,11 @@
 #endif
 
 #ifndef DEFAULT_FUSE_VOLUME_NAME
-#define DEFAULT_FUSE_VOLUME_NAME "DOKAN"
+#define DEFAULT_FUSE_VOLUME_NAME "PCloud"
 #endif
 
 #ifndef DEFAULT_FUSE_FILESYSTEM_NAME
-#define DEFAULT_FUSE_FILESYSTEM_NAME "Dokan user-level file system"
+#define DEFAULT_FUSE_FILESYSTEM_NAME "PFS"
 #endif
 
 #ifdef __cplusplus
@@ -52,7 +52,7 @@ typedef unsigned int gid_t;
 typedef unsigned int uid_t;
 #endif
 
-#if !defined(HAVE_STRUCT_TIMESPEC) && !defined(__CYGWIN__) /* win32 pthread.h defines it */
+#if !defined(HAVE_STRUCT_TIMESPEC) && !defined(__CYGWIN__) && !defined(_TIMESPEC_DEFINED)/* win32 pthread.h defines it */
 /* POSIX.1b structure for a time value.  This is like a `struct timeval' but
 has nanoseconds instead of microseconds.  */
 #define HAVE_STRUCT_TIMESPEC 1
