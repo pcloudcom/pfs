@@ -46,11 +46,7 @@ static binresult BOOL_FALSE={PARAM_BOOL, 0, {0}};
 static int writeallfd(int sock, const void *ptr, size_t len){
   ssize_t res;
   while (len){
-#if !defined(MINGW) && !defined(_WIN32)
-    res=write(sock, ptr, len);
-#else
     res=send(sock, ptr, len, 0);
-#endif
     if (res==-1){
       if (errno==EINTR || errno==EAGAIN)
         continue;
@@ -85,11 +81,7 @@ static ssize_t readallfd(int sock, void *ptr, size_t len){
   ssize_t ret, rd;
   rd=0;
   while (rd<len){
-#if !defined(MINGW) && !defined(_WIN32)
-    ret=read(sock, ptr+rd, len-rd);
-#else
     ret=recv(sock, ptr+rd, len-rd, 0);
-#endif
     if (ret==0){
       return -1;
     }
@@ -466,29 +458,9 @@ static int connect_res(struct addrinfo *res){
 }
 
 static int connect_socket(const char *host, const char *port){
-  struct addrinfo hints, *res=NULL;
-  struct in6_addr serveraddr;
+  struct addrinfo *res=NULL;
   int sock, rc;
-
-  memset(&hints, 0, sizeof(hints));
-  hints.ai_flags=AI_NUMERICSERV;
-  hints.ai_family=AF_UNSPEC;
-  hints.ai_socktype=SOCK_STREAM;
-  if (inet_pton(AF_INET, host, &serveraddr)==1){
-    hints.ai_family = AF_INET;
-    hints.ai_flags |= AI_NUMERICHOST;
-  }
-  else if (inet_pton(AF_INET6, host, &serveraddr)==1){
-    hints.ai_family = AF_INET6;
-    hints.ai_flags |= AI_NUMERICHOST;
-  }
-
-#if !defined(MINGW) && !defined(_WIN32)
-  rc=getaddrinfo(host, port, &hints, &res);
-#else
   rc=getaddrinfo(host, port, NULL, &res);
-#endif
-
   if (rc!=0)
     return -1;
   sock=connect_res(res);
