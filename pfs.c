@@ -40,7 +40,7 @@ static size_t readaheadmaxsec=12;
 static size_t pagesize=64*1024;
 
 #if defined(MINGW) || defined(_WIN32)
-static unsigned long long cachesize=512*1024*1024;
+static unsigned long long cachesize=1024*1024*1024;
 #else
 static size_t cachesize=4L*1024*1024*1024;
 #endif
@@ -1822,6 +1822,88 @@ static int fs_unlink(const char *path){
   return 0;
 }
 
+static int rename_file(uint64_t fileid, const char *new_path){
+  binresult *res, *sub;
+  node *entry;
+  int result = 0;
+  char fixed_path[1024];
+
+  pthread_mutex_lock(&treelock);
+  entry=get_node_by_path(new_path);
+  if (entry){
+    size_t len = strlen(new_path);
+    if (new_path[len-1] != '/'){
+      strncpy(fixed_path, new_path, len-1);
+      fixed_path[len] = '/';
+      fixed_path[len+1] = 0;
+      debug("rename file - path changed from %s to %s\n", new_path, fixed_path);
+      new_path = fixed_path;
+    }
+  }
+  pthread_mutex_unlock(&treelock);
+
+  res=cmd("renamefile", P_NUM("fileid", fileid), P_STR("topath", new_path));
+  if (!res){
+    return NOT_CONNECTED_ERR;
+  }
+  sub=find_res(res, "result");
+  if (!sub || sub->type!=PARAM_NUM){
+    free(res);
+    result = -ENOENT;
+  }
+  if (sub->num!=0){
+    result=convert_error(sub->num);
+  }
+  free(res);
+  return result;
+}
+
+static int rename_folder(uint64_t folderid, const char *new_path){
+  binresult *res, *sub;
+  int result = 0;
+  debug("rename folder to %s \n", new_path);
+  res=cmd("renamefolder", P_NUM("folderid", folderid), P_STR("topath", new_path));
+  if (!res){
+    debug("rf - not connected\n");
+    return NOT_CONNECTED_ERR;
+  }
+  sub=find_res(res, "result");
+  if (!sub || sub->type!=PARAM_NUM){
+    free(res);
+    debug("rf - no res\n");
+    result = -ENOENT;
+  }
+  if (sub->num!=0){
+    result=convert_error(sub->num);
+  }
+  free(res);
+  debug("rename folder - out %d\n", result);
+  return result;
+}
+
+static int fs_rename(const char *old_path, const char *new_path){
+  node *entry;
+  int result;
+  uint64_t srcid;
+  debug("rename from %s fo %s\n", old_path, new_path);
+  pthread_mutex_lock(&treelock);
+  entry=get_node_by_path(old_path);
+  if (!entry){
+    pthread_mutex_unlock(&treelock);
+    return -ENOENT;
+  }
+  srcid = entry->isfolder ? entry->tfolder.folderid : entry->tfile.fileid;
+  pthread_mutex_unlock(&treelock);
+
+  if (entry->isfolder){
+    result = rename_folder(srcid, new_path);
+  }
+  else{
+    result = rename_file(srcid, new_path);
+  }
+  return result;
+}
+
 static int fs_chmod(const char *path, mode_t mode){
   return 0;
 }
@@ -1932,6 +2014,7 @@ static struct fuse_operations fs_oper={
   .mkdir    = fs_mkdir,
   .rmdir    = fs_rmdir,
   .unlink   = fs_unlink,
+  .rename   = fs_rename,
   .chmod    = fs_chmod,
   .utimens = fs_utimens
 };
@@ -1982,6 +2065,5 @@ int main(int argc, char **argv){
   mygid=getgid();
 #endif
   r = fuse_main(argc, argv, &fs_oper, NULL);
-//  debug("End with code %d\n", r);
   return r;
 }
