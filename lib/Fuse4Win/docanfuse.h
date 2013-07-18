@@ -3,10 +3,10 @@
 
 #include <string>
 
-#define FUSE_THREAD_COUNT 10
+#define FUSE_THREAD_COUNT 50
 #define DOKAN_DLL L"dokan.dll"
 
-struct fuse_config 
+struct fuse_config
 {
     unsigned int umask;
 	unsigned int fileumask, dirumask;
