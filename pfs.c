@@ -628,6 +628,50 @@ static void diff_modifyfile_file(binresult *meta, time_t mtime){
   pthread_mutex_unlock(&treelock);
 }
 
+static void diff_modifyfile_folder(binresult* meta, time_t mtime){
+  uint64_t folderid;
+  binresult *res;
+  node *f;
+  folderid=find_res(meta, "folderid")->num;
+  pthread_mutex_lock(&treelock);
+  f=get_folder_by_id(folderid);
+  if (f){
+    f->createtime=find_res(meta, "created")->num+timeoff;
+    f->modifytime=find_res(meta, "modified")->num+timeoff;
+    res=find_res(meta, "name");
+    if (res){
+      debug("folder name -> %s\n", res->str);
+      f=realloc(f, sizeof(node)+res->length+1);
+      f->name = (char*)(f+1);
+      memcpy((void*)f->name, res->str, res->length+1);
+    }
+    res = find_res(meta, "parentfolderid");
+    if (res){
+      uint64_t parent = res->num;
+      if (parent != f->parent->tfolder.folderid){
+        node* par;
+        remove_from_parent(f);
+        par=get_folder_by_id(parent);
+        if (!par){
+          pthread_mutex_unlock(&treelock);
+          return;
+        }
+        if (par->tfolder.nodecnt>=par->tfolder.nodealloc){
+          par->tfolder.nodealloc+=64;
+          par->tfolder.nodes=realloc(par->tfolder.nodes, sizeof(node *)*par->tfolder.nodealloc);
+        }
+        par->tfolder.nodes[par->tfolder.nodecnt++]=f;
+        f->tfolder.foldercnt++;
+        f->modifytime=mtime;
+        f->parent=par;
+      }
+    }
+  }
+  if (treesleep)
+    pthread_cond_broadcast(&treecond);
+  pthread_mutex_unlock(&treelock);
+}
+
 static void free_file_cache(node *file){
   cacheentry *ce, *cn;
   ce=file->tfile.cache;
@@ -710,6 +754,8 @@ static void process_diff(binresult *diff){
       diff_create_file(meta, tm);
     else if (!strcmp(event->str, "modifyfile"))
       diff_modifyfile_file(meta, tm);
+    else if (!strcmp(event->str, "modifyfolder"))
+      diff_modifyfile_folder(meta, tm);
     else if (!strcmp(event->str, "deletefolder"))
       diff_delete_folder(meta, tm);
     else if (!strcmp(event->str, "deletefile"))
