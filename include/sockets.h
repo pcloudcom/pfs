@@ -45,29 +45,6 @@
 #define AI_V4MAPPED	    0x0040
 #endif
 
-
-static int inet_pton(int af, const char *src, void *dst)
-{
-    struct addrinfo *result = NULL;
-    int res = getaddrinfo(src, NULL, NULL, &result);
-    if (res != 0){
-        if (res == WSANOTINITIALISED){
-            WSADATA wsaData;
-            res = WSAStartup(MAKEWORD(2, 2), &wsaData);
-            if (res != 0) {
-                return -1;
-            }
-            return inet_pton(af, src, dst);
-        }
-        return -1;
-    }
-    if (result->ai_family == af){
-        res = 1;
-    }
-    freeaddrinfo(result);
-    return res;
-}
-
 #endif
 
 #endif // SOCKETS_H_INCLUDED

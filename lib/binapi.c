@@ -461,8 +461,22 @@ static int connect_socket(const char *host, const char *port){
   struct addrinfo *res=NULL;
   int sock, rc;
   rc=getaddrinfo(host, port, NULL, &res);
+#if defined(MINGW) || defined(_WIN32)
+    if (rc != 0){
+        if (rc == WSANOTINITIALISED){
+            WSADATA wsaData;
+            rc = WSAStartup(MAKEWORD(2, 2), &wsaData);
+            if (rc != 0) {
+                return -1;
+            }
+            return connect_socket(host, port);
+        }
+        return -1;
+    }
+#else
   if (rc!=0)
     return -1;
+#endif // defined
   sock=connect_res(res);
   freeaddrinfo(res);
 #ifdef TCP_KEEPCNT
