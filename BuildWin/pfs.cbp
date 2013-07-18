@@ -11,7 +11,7 @@
 				<Option object_output="obj/Debug/" />
 				<Option type="1" />
 				<Option compiler="gcc" />
-				<Option parameters="g: -d" />
+				<Option parameters="m: -d" />
 				<Compiler>
 					<Add option="-Wall" />
 					<Add option="-g" />
@@ -27,6 +27,7 @@
 				<Option compiler="gcc" />
 				<Option parameters="g:" />
 				<Compiler>
+					<Add option="-O3" />
 					<Add option="-O2" />
 					<Add option="-Wall" />
 				</Compiler>

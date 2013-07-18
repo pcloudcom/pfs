@@ -569,22 +569,6 @@ static void diff_create_file(binresult *meta, time_t mtime){
   pthread_mutex_unlock(&treelock);
 }
 
-static void diff_modifyfile_file(binresult *meta, time_t mtime){
-  uint64_t fileid;
-  node *f;
-  fileid=find_res(meta, "fileid")->num;
-  pthread_mutex_lock(&treelock);
-  f=get_file_by_id(fileid);
-  if (f){
-    f->createtime=find_res(meta, "created")->num+timeoff;
-    f->modifytime=find_res(meta, "modified")->num+timeoff;
-    f->tfile.size=find_res(meta, "size")->num;
-  }
-  if (treesleep)
-    pthread_cond_broadcast(&treecond);
-  pthread_mutex_unlock(&treelock);
-}
-
 static void remove_from_parent(node *nd){
   node *parent;
   uint32_t i;
@@ -597,6 +581,51 @@ static void remove_from_parent(node *nd){
       parent->tfolder.nodecnt--;
       return;
     }
+}
+
+static void diff_modifyfile_file(binresult *meta, time_t mtime){
+  uint64_t fileid;
+  binresult *res;
+  node *f;
+  fileid=find_res(meta, "fileid")->num;
+  pthread_mutex_lock(&treelock);
+  f=get_file_by_id(fileid);
+  if (f){
+    f->createtime=find_res(meta, "created")->num+timeoff;
+    f->modifytime=find_res(meta, "modified")->num+timeoff;
+    f->tfile.size=find_res(meta, "size")->num;
+    res=find_res(meta, "name");
+    if (res){
+      debug("name -> %s\n", res->str);
+      f=realloc(f, sizeof(node)+res->length+1);
+      f->name = (char*)(f+1);
+      memcpy((void*)f->name, res->str, res->length+1);
+    }
+    res = find_res(meta, "parentfolderid");
+    if (res){
+      uint64_t parent = res->num;
+      if (parent != f->parent->tfolder.folderid){
+        node* par;
+        remove_from_parent(f);
+        par=get_folder_by_id(parent);
+        if (!par){
+          pthread_mutex_unlock(&treelock);
+          return;
+        }
+        if (par->tfolder.nodecnt>=par->tfolder.nodealloc){
+          par->tfolder.nodealloc+=64;
+          par->tfolder.nodes=realloc(par->tfolder.nodes, sizeof(node *)*par->tfolder.nodealloc);
+        }
+        par->tfolder.nodes[par->tfolder.nodecnt++]=f;
+        f->tfolder.foldercnt++;
+        f->modifytime=mtime;
+        f->parent=par;
+      }
+    }
+  }
+  if (treesleep)
+    pthread_cond_broadcast(&treecond);
+  pthread_mutex_unlock(&treelock);
 }
 
 static void free_file_cache(node *file){
@@ -673,6 +702,7 @@ static void process_diff(binresult *diff){
   event=find_res(diff, "event");
   meta=find_res(diff, "metadata");
   tm=find_res(diff, "time")->num+timeoff;
+  debug("diff -> %s\n", event->str);
   if (event && event->type==PARAM_STR && meta && meta->type==PARAM_HASH){
     if (!strcmp(event->str, "createfolder"))
       diff_create_folder(meta, tm);
@@ -693,6 +723,7 @@ static void *diff_thread(void *ptr){
   int unsigned i;
   diffid=0;
   while (1){
+    debug("send diff\n");
     res=send_command(diffsock, "diff", P_NUM("diffid", diffid), P_BOOL("block", 1), P_STR("timeformat", "timestamp"));
     if (!res){
       api_close(diffsock);
