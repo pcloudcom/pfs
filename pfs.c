@@ -534,44 +534,6 @@ static void diff_create_folder(binresult *meta, time_t mtime){
   pthread_mutex_unlock(&treelock);
 }
 
-static void diff_create_file(binresult *meta, time_t mtime){
-  binresult *name;
-  node *file, *f;
-  uint64_t parentid;
-  name=find_res(meta, "name");
-  if (!name)
-    return;
-  file=(node *)malloc(sizeof(node)+name->length+1);
-  memcpy(file+1, name->str, name->length+1);
-  file->name=(char *)(file+1);
-  file->createtime=find_res(meta, "created")->num+timeoff;
-  file->modifytime=find_res(meta, "modified")->num+timeoff;
-  file->tfile.fileid=find_res(meta, "fileid")->num;
-  file->tfile.size=find_res(meta, "size")->num;
-  file->tfile.cache=NULL;
-  file->isfolder=0;
-  file->isdeleted=0;
-  parentid=find_res(meta, "parentfolderid")->num;
-  pthread_mutex_lock(&treelock);
-  f=get_folder_by_id(parentid);
-  if (!f){
-    pthread_mutex_unlock(&treelock);
-    free(file);
-    return;
-  }
-  if (f->tfolder.nodecnt>=f->tfolder.nodealloc){
-    f->tfolder.nodealloc+=64;
-    f->tfolder.nodes=realloc(f->tfolder.nodes, sizeof(node *)*f->tfolder.nodealloc);
-  }
-  f->tfolder.nodes[f->tfolder.nodecnt++]=file;
-  f->modifytime=mtime;
-  file->parent=f;
-  list_add(files[file->tfile.fileid%HASH_SIZE], file);
-  if (treesleep)
-    pthread_cond_broadcast(&treecond);
-  pthread_mutex_unlock(&treelock);
-}
-
 static void remove_from_parent(node *nd){
   node *parent;
   uint32_t i;
@@ -612,6 +574,59 @@ static void delete_file(node *file, int removefromparent){
     free_file_cache(file);
     free(file);
   }
+}
+
+static void diff_create_file(binresult *meta, time_t mtime){
+  binresult *name;
+  node *file, *f;
+  uint64_t parentid;
+
+  name = find_res(meta, "deletedfileid");
+  if (name){
+    uint64_t old_id = name->num;
+    debug("create-> deleted old file\n");
+    pthread_mutex_lock(&treelock);
+    f=get_file_by_id(old_id);
+    if (f){
+      f->parent->modifytime=mtime;
+      debug("deleted old file %s\n", f->name);
+      delete_file(f, 1);
+    }
+    pthread_mutex_unlock(&treelock);
+  }
+
+  name=find_res(meta, "name");
+  if (!name)
+    return;
+  file=(node *)malloc(sizeof(node)+name->length+1);
+  memcpy(file+1, name->str, name->length+1);
+  file->name=(char *)(file+1);
+  file->createtime=find_res(meta, "created")->num+timeoff;
+  file->modifytime=find_res(meta, "modified")->num+timeoff;
+  file->tfile.fileid=find_res(meta, "fileid")->num;
+  file->tfile.size=find_res(meta, "size")->num;
+  file->tfile.cache=NULL;
+  file->isfolder=0;
+  file->isdeleted=0;
+  parentid=find_res(meta, "parentfolderid")->num;
+  pthread_mutex_lock(&treelock);
+  f=get_folder_by_id(parentid);
+  if (!f){
+    pthread_mutex_unlock(&treelock);
+    free(file);
+    return;
+  }
+  if (f->tfolder.nodecnt>=f->tfolder.nodealloc){
+    f->tfolder.nodealloc+=64;
+    f->tfolder.nodes=realloc(f->tfolder.nodes, sizeof(node *)*f->tfolder.nodealloc);
+  }
+  f->tfolder.nodes[f->tfolder.nodecnt++]=file;
+  f->modifytime=mtime;
+  file->parent=f;
+  list_add(files[file->tfile.fileid%HASH_SIZE], file);
+  if (treesleep)
+    pthread_cond_broadcast(&treecond);
+  pthread_mutex_unlock(&treelock);
 }
 
 static void diff_modifyfile_file(binresult *meta, time_t mtime){
@@ -987,7 +1002,7 @@ static int fs_statfs(const char *path, struct statvfs *stbuf){
   binresult *res;
   uint64_t q, uq;
   time_t tm;
-//  debug ("fs_statfs %s\n", path);
+  debug ("fs_statfs %s\n", path);
   pthread_mutex_lock(&treelock);
   entry=get_node_by_path(path);
   pthread_mutex_unlock(&treelock);
@@ -2149,7 +2164,7 @@ void *fs_init(struct fuse_conn_info *conn){
 
   pthread_mutexattr_init(&mattr);
   pthread_mutexattr_settype(&mattr, PTHREAD_MUTEX_RECURSIVE);
-  pthread_mutex_init(&treelock, &mattr);
+  pthread_mutex_init(&treelock, NULL);
   pthread_cond_init(&treecond, NULL);
 
 #if defined(FUSE_CAP_ASYNC_READ) && defined(FUSE_CAP_ATOMIC_O_TRUNC) && defined(FUSE_CAP_BIG_WRITES)
@@ -2285,6 +2300,6 @@ int pfs_main(int argc, char **argv, const char* username, const char* password){
 
 #ifndef SERVICE
 int main(int argc, char **argv){
-    return pfs_main(argc, argv, NULL, NULL);
+    return pfs_main(argc, argv, "peshe@abv.bg", "Aldebaram");
 }
 #endif

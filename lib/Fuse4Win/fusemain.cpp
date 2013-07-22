@@ -109,7 +109,8 @@ int impl_fuse_context::convert_flags(DWORD Flags)
 {
 	bool read=(Flags & GENERIC_READ) || (Flags & GENERIC_EXECUTE);
 	bool write=(Flags & GENERIC_WRITE);
-	if (read && !write)
+
+	if (!write)
 		return O_RDONLY;
 	if (!read && write)
 		return O_WRONLY;
