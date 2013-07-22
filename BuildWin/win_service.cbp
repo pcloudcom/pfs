@@ -20,7 +20,7 @@
 				<Linker>
 					<Add option="-s" />
 					<Add library=".\bin\Debug\libfuse4Win.a" />
-					<Add directory="D:/Dev/mobino/hfl/pfs/BuildWin/bin/Debug" />
+					<Add directory="bin/Release" />
 				</Linker>
 			</Target>
 		</Build>

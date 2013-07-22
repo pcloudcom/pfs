@@ -3,7 +3,7 @@
 
 #include <string>
 
-#define FUSE_THREAD_COUNT 10
+#define FUSE_THREAD_COUNT 15
 #define DOKAN_DLL L"dokan.dll"
 
 struct fuse_config

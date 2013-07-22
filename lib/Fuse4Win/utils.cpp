@@ -32,7 +32,7 @@ wchar_t* utf8_to_wchar(const char *str)
 
 void utf8_to_wchar_buf(const char *src, wchar_t *res, int maxlen)
 {
-	if (res==NULL || maxlen==0) return;
+	if (src==NULL || res==NULL || maxlen==0) return;
 
 	int ln=MultiByteToWideChar(CP_ACP,0,src,-1,NULL,0)/* | raise_w32_error()*/;
 	if (ln>=maxlen)

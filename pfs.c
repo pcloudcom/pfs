@@ -321,8 +321,10 @@ static binresult *do_cmd(const char *command, size_t cmdlen, const void *data, s
   else
     res=do_send_command(sock, command, cmdlen, nparams, paramcnt+1, -1, 0);
   if (res && datalen){
-    if (writeall(sock, data, datalen))
+    if (writeall(sock, data, datalen)){
+      debug("writeall failed\n");
       res=NULL;
+    }
   }
   pthread_mutex_unlock(&writelock);
 //  debug("Do-cmd exit %s\n", command);
@@ -365,6 +367,7 @@ static void cancel_all(){
 static void cancel_all_and_reconnect(){
   binresult *res;
   apisock null;
+  debug("cancel_all_and_reconnect\n");
   cancel_all();
   null.ssl=NULL;
   null.sock=-1;
@@ -616,8 +619,10 @@ static void diff_modifyfile_file(binresult *meta, time_t mtime){
   uint64_t fileid;
   binresult *res;
   node *f;
+  debug("modify file in \n");
   fileid=find_res(meta, "fileid")->num;
   pthread_mutex_lock(&treelock);
+
 
   res = find_res(meta, "deletedfileid");
   if (res){
@@ -633,9 +638,12 @@ static void diff_modifyfile_file(binresult *meta, time_t mtime){
 
   f=get_file_by_id(fileid);
   if (f){
-    f->createtime=find_res(meta, "created")->num+timeoff;
-    f->modifytime=find_res(meta, "modified")->num+timeoff;
-    f->tfile.size=find_res(meta, "size")->num;
+    res=find_res(meta, "created");
+    if (res) f->createtime=res->num+timeoff;
+    res=find_res(meta, "modified");
+    if (res) f->modifytime=res->num+timeoff;
+    res=find_res(meta, "size");
+    if (res)f->tfile.size=res->num;
     res=find_res(meta, "name");
     if (res){
       debug("name -> %s\n", res->str);
@@ -648,10 +656,12 @@ static void diff_modifyfile_file(binresult *meta, time_t mtime){
       uint64_t parent = res->num;
       if (parent != f->parent->tfolder.folderid){
         node* par;
+        debug("file change parent\n");
         remove_from_parent(f);
         par=get_folder_by_id(parent);
         if (!par){
           pthread_mutex_unlock(&treelock);
+          debug("modify file out - no parent?!? \n");
           return;
         }
         if (par->tfolder.nodecnt>=par->tfolder.nodealloc){
@@ -668,13 +678,16 @@ static void diff_modifyfile_file(binresult *meta, time_t mtime){
   if (treesleep)
     pthread_cond_broadcast(&treecond);
   pthread_mutex_unlock(&treelock);
+  debug("modify file out OK\n");
 }
 
 static void diff_modifyfile_folder(binresult* meta, time_t mtime){
   uint64_t folderid;
   binresult *res;
   node *f;
+  debug("modify folder in\n");
   folderid=find_res(meta, "folderid")->num;
+
   pthread_mutex_lock(&treelock);
   f=get_folder_by_id(folderid);
   if (f){
@@ -694,10 +707,12 @@ static void diff_modifyfile_folder(binresult* meta, time_t mtime){
       uint64_t parent = res->num;
       if (parent != f->parent->tfolder.folderid){
         node* par;
+        debug("folder - change parent\n");
         remove_from_parent(f);
         par=get_folder_by_id(parent);
         if (!par){
           pthread_mutex_unlock(&treelock);
+          debug("modify folder out - no parent\n");
           return;
         }
         if (par->tfolder.nodecnt>=par->tfolder.nodealloc){
@@ -714,6 +729,7 @@ static void diff_modifyfile_folder(binresult* meta, time_t mtime){
   if (treesleep)
     pthread_cond_broadcast(&treecond);
   pthread_mutex_unlock(&treelock);
+  debug("modify folder out - OK\n");
 }
 
 static void delete_folder(node *folder, int removefromparent){
@@ -1026,31 +1042,37 @@ static int fs_creat(const char *path, mode_t mode, struct fuse_file_info *fi){
   const char *name;
   openfile *of;
   uint64_t folderid, fd, fileid;
+  debug("create - %s \n", path);
   pthread_mutex_lock(&treelock);
   entry=get_parent_folder(path, &name);
   if (!entry){
     pthread_mutex_unlock(&treelock);
+    debug("create - no parent entry %s \n", path);
     return -ENOENT;
   }
   if (!entry->isfolder){
     pthread_mutex_unlock(&treelock);
+    debug("create - parent is not dir entry %s \n", path);
     return -ENOTDIR;
   }
   folderid=entry->tfolder.folderid;
   pthread_mutex_unlock(&treelock);
 //  debug("creating a file flags=%x\n", fi->flags);
   res=cmd("file_open", P_NUM("flags", fi->flags|0x0040), P_NUM("folderid", folderid), P_STR("name", name));
-  if (!res)
+  if (!res){
+    debug("create - not connected\n");
     return NOT_CONNECTED_ERR;
+  }
   sub=find_res(res, "result");
   if (!sub || sub->type!=PARAM_NUM){
     free(res);
+    debug("create - failed to create %s\n", path);
     return -ENOENT;
   }
   if (sub->num!=0){
     int err=convert_error(sub->num);
     free(res);
-//    debug ("fs_creat error %d %s\n", err, path);
+    debug ("fs_creat error %d %s\n", err, path);
     return err;
   }
   fd=find_res(res, "fd")->num;
@@ -1074,6 +1096,7 @@ static int fs_creat(const char *path, mode_t mode, struct fuse_file_info *fi){
   of->file=entry;
 //  debug("fs_creat - file ID %u\n", (uint32_t)of->file->tfile.fileid);
   fi->fh=(uintptr_t)of;
+  debug("create - out OK\n");
   return 0;
 }
 
@@ -1195,7 +1218,7 @@ static void schedule_readahead_finished(void *_pf, binresult *res){
 //  debug("schedule_readahead_finished out OK\n");
   return;
 err:
-//  debug("schedule_readahead_finished failed! NC error\n");
+  debug("schedule_readahead_finished failed! NC error\n");
   of->error=NOT_CONNECTED_ERR;
   pthread_mutex_lock(&pageslock);
   list_del(page);
@@ -1299,12 +1322,13 @@ static void fs_open_finished(void *_of, binresult *res){
   sub=find_res(res, "result");
   pthread_mutex_lock(&of->mutex);
   if (!sub || sub->type!=PARAM_NUM){
-//    debug("fs_open_finished - EIO\n");
+    debug("fs_open_finished - EIO\n");
     of->error=-EIO;
     if (of->waitcmd)
       pthread_cond_broadcast(&of->cond);
   }
   else if (sub->num!=0){
+    debug("fs_open_finished - error %u\n", (uint32_t)sub->num);
     of->error=convert_error(sub->num);
     if (of->waitcmd)
       pthread_cond_broadcast(&of->cond);
@@ -1322,10 +1346,12 @@ static int fs_open(const char *path, struct fuse_file_info *fi){
   pthread_mutex_lock(&treelock);
   entry=get_node_by_path(path);
   if (!entry){
+    debug("open - no entry %s \n", path);
     pthread_mutex_unlock(&treelock);
     return -ENOENT;
   }
   if (entry->isfolder){
+    debug("open - is folder %s \n", path);
     pthread_mutex_unlock(&treelock);
     return -EISDIR;
   }
@@ -1654,9 +1680,9 @@ static void fs_write_finished(void *_of, binresult *res){
   openfile *of;
   binresult *sub;
   of=(openfile *)_of;
-//  debug("fs_write_finished\n");
   pthread_mutex_lock(&of->mutex);
   if (!res){
+    debug("fs_write_finished - error\n");
     of->error=NOT_CONNECTED_ERR;
     of->refcnt--;
     if (of->waitcmd)
@@ -1666,12 +1692,13 @@ static void fs_write_finished(void *_of, binresult *res){
   }
   sub=find_res(res, "result");
   if (!sub || sub->type!=PARAM_NUM){
-//    debug("fs_write_finished EIO\n");
+    debug("fs_write_finished EIO\n");
     of->error=-EIO;
     if (of->waitcmd)
       pthread_cond_broadcast(&of->cond);
   }
   else if (sub->num!=0){
+    debug("fs_write_finished error\n");
     of->error=convert_error(sub->num);
     if (of->waitcmd)
       pthread_cond_broadcast(&of->cond);
@@ -1733,6 +1760,7 @@ static void fs_ftruncate_finished(void *_of, binresult *res){
   of=(openfile *)_of;
   pthread_mutex_lock(&of->mutex);
   if (!res){
+    debug("fs_ftruncate_finished error\n");
     of->error=NOT_CONNECTED_ERR;
     of->refcnt--;
     pthread_cond_broadcast(&of->cond);
@@ -1741,11 +1769,12 @@ static void fs_ftruncate_finished(void *_of, binresult *res){
   }
   sub=find_res(res, "result");
   if (!sub || sub->type!=PARAM_NUM){
-//    debug("truncate - EIO\n");
+    debug("truncate - EIO\n");
     of->error=-EIO;
     pthread_cond_broadcast(&of->cond);
   }
   else if (sub->num!=0){
+    debug("truncate - Error\n");
     of->error=convert_error(sub->num);
     pthread_cond_broadcast(&of->cond);
   }
@@ -1956,7 +1985,7 @@ static int rename_file(uint64_t fileid, const char *new_path){
 
   pthread_mutex_lock(&treelock);
   entry=get_node_by_path(new_path);
-  if (entry){
+  if (entry && entry->isfolder){
     size_t len = strlen(new_path);
     if (new_path[len-1] != '/'){
       strncpy(fixed_path, new_path, len-1);
@@ -1975,7 +2004,7 @@ static int rename_file(uint64_t fileid, const char *new_path){
   sub=find_res(res, "result");
   if (!sub || sub->type!=PARAM_NUM){
     free(res);
-    result = -ENOENT;
+    return -ENOENT;
   }
   if (sub->num!=0){
     result=convert_error(sub->num);
@@ -1997,7 +2026,7 @@ static int rename_folder(uint64_t folderid, const char *new_path){
   if (!sub || sub->type!=PARAM_NUM){
     free(res);
     debug("rf - no res\n");
-    result = -ENOENT;
+    return -ENOENT;
   }
   if (sub->num!=0){
     result=convert_error(sub->num);
@@ -2195,7 +2224,7 @@ int pfs_main(int argc, char **argv, const char* username, const char* password){
   }
 
   if (username && password){
-    debug("try to get auth\n");
+//    debug("try to get auth\n");
     get_auth(username, password);
   }
 
