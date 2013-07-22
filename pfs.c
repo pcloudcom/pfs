@@ -53,7 +53,8 @@ static uint64_t quota, usedquota;
 
 static const char *cachefile=NULL;
 
-static const char *auth="Ec7QkEjFUnzZ7Z8W2YH1qLgxY7gGvTe09AH0i7V3kX";
+static char *auth="Ec7QkEjFUnzZ7Z8W2YH1qLgxY7gGvTe09AH0i7V3kX";
+//OcRE1WxMyzzZnZ0e96nIT5TIbed5RrDbNshpjWheN7
 
 static int usessl=0;
 
@@ -79,7 +80,7 @@ static int fs_inited = 0;
 #define list_del(elem) do {*elem->prev=elem->next; if (elem->next) elem->next->prev=elem->prev;} while (0)
 #define new(type) (type *)malloc(sizeof(type))
 
-#define debug(...) do {FILE *d=fopen("/tmp/pfsfs.txt", "a"); fprintf(d, __VA_ARGS__); fclose(d);} while (0)
+#define debug(...) do {FILE *d=fopen("/tmp/pfsfs.txt", "a"); if(!d)break; fprintf(d, __VA_ARGS__); fclose(d);} while (0)
 
 #define md5_debug(_str, _len) ({unsigned char __md5b[16]; char *__ret, *__ptr; int __i; MD5((unsigned char *)(_str), (_len), __md5b); __ret=malloc(34);\
                       __ptr=__ret; for (__i=0; __i<16; __i++){*__ptr++=hexdigits[__md5b[__i]/16];*__ptr++=hexdigits[__md5b[__i]%16];}\
@@ -583,12 +584,53 @@ static void remove_from_parent(node *nd){
     }
 }
 
+static void free_file_cache(node *file){
+  cacheentry *ce, *cn;
+  ce=file->tfile.cache;
+  while (ce){
+    cn=ce->next;
+    cn->free=1;
+#ifdef MADV_DONTNEED
+    madvise(cachepages+cn->pageid*cachehead->pagesize, cachehead->pagesize, MADV_DONTNEED);
+#endif
+    list_add(freecache, cn);
+    ce=cn;
+  }
+}
+
+static void delete_file(node *file, int removefromparent){
+  if (removefromparent)
+    remove_from_parent(file);
+  list_del(file);
+  if (file->tfile.refcnt){
+    file->isdeleted=1;
+    file->parent=NULL;
+  }
+  else {
+    free_file_cache(file);
+    free(file);
+  }
+}
+
 static void diff_modifyfile_file(binresult *meta, time_t mtime){
   uint64_t fileid;
   binresult *res;
   node *f;
   fileid=find_res(meta, "fileid")->num;
   pthread_mutex_lock(&treelock);
+
+  res = find_res(meta, "deletedfileid");
+  if (res){
+    uint64_t old_id = res->num;
+    debug("deleted old file\n");
+    f=get_file_by_id(old_id);
+    if (f){
+      f->parent->modifytime=mtime;
+      debug("deleted old file %s\n", f->name);
+      delete_file(f, 1);
+    }
+  }
+
   f=get_file_by_id(fileid);
   if (f){
     f->createtime=find_res(meta, "created")->num+timeoff;
@@ -674,34 +716,6 @@ static void diff_modifyfile_folder(binresult* meta, time_t mtime){
   pthread_mutex_unlock(&treelock);
 }
 
-static void free_file_cache(node *file){
-  cacheentry *ce, *cn;
-  ce=file->tfile.cache;
-  while (ce){
-    cn=ce->next;
-    cn->free=1;
-#ifdef MADV_DONTNEED
-    madvise(cachepages+cn->pageid*cachehead->pagesize, cachehead->pagesize, MADV_DONTNEED);
-#endif
-    list_add(freecache, cn);
-    ce=cn;
-  }
-}
-
-static void delete_file(node *file, int removefromparent){
-  if (removefromparent)
-    remove_from_parent(file);
-  list_del(file);
-  if (file->tfile.refcnt){
-    file->isdeleted=1;
-    file->parent=NULL;
-  }
-  else {
-    free_file_cache(file);
-    free(file);
-  }
-}
-
 static void delete_folder(node *folder, int removefromparent){
   uint32_t i;
   for (i=0; i<folder->tfolder.nodecnt; i++)
@@ -771,7 +785,7 @@ static void *diff_thread(void *ptr){
   int unsigned i;
   diffid=0;
   while (1){
-    debug("send diff\n");
+//    debug("send diff\n");
     res=send_command(diffsock, "diff", P_NUM("diffid", diffid), P_BOOL("block", 1), P_STR("timeformat", "timestamp"));
     if (!res){
       api_close(diffsock);
@@ -2131,13 +2145,41 @@ static struct fuse_operations fs_oper={
   .utimens = fs_utimens
 };
 
-int pfs_main(int argc, char **argv){
+static int get_auth(const char* username, const char* pass)
+{
+  binresult *res, *sub, *au;
+  static char localauth[64+8];
+//  debug("auth: %s, %s\n", username, pass);
+  res=send_command(sock, "userinfo", P_STR("username", username), P_STR("password", pass), P_BOOL("getauth", 1));
+  if (res){
+    sub=find_res(res, "result");
+    if (!sub || sub->type!=PARAM_NUM || sub->num!=0){
+      free(res);
+      return 1;
+    }
+    au=find_res(res, "auth");
+    if (au){
+      strncpy(localauth, au->str, 64+7);
+//      debug("got auth %s\n", localauth);
+      auth = localauth;
+      free(res);
+      return 0;
+    }
+    free(res);
+  }
+  return 1;
+}
+
+int pfs_main(int argc, char **argv, const char* username, const char* password){
   int r = 0;
   binresult *res, *subres;
 
   debug ("starting - argc: %d\n", argc);
   for (r = 0; r < argc; ++r)
     debug("\t %s \n", argv[r]);
+  if (username && password)
+    debug("username %s, password %s\n", username, password);
+
 
   if (usessl){
     sock=api_connect_ssl();
@@ -2151,7 +2193,17 @@ int pfs_main(int argc, char **argv){
     fprintf(stderr, "Cannot connect to server\n");
     return 1;
   }
+
+  if (username && password){
+    debug("try to get auth\n");
+    get_auth(username, password);
+  }
+
   res=send_command(sock, "userinfo", P_STR("auth", auth));
+  if(!res){
+    fprintf(stderr, "Login failed\n");
+    return 1;
+  }
   subres=find_res(res, "result");
   if (!subres || subres->type!=PARAM_NUM || subres->num!=0){
     fprintf(stderr, "Login failed (%s)\n", find_res(res, "error")->str);
@@ -2159,6 +2211,10 @@ int pfs_main(int argc, char **argv){
   }
   free(res);
   res=send_command(diffsock, "userinfo", P_STR("auth", auth));
+  if(!res){
+    fprintf(stderr, "Login failed\n");
+    return 1;
+  }
   subres=find_res(res, "result");
   if (!subres || subres->type!=PARAM_NUM || subres->num!=0){
     fprintf(stderr, "Login failed (%s)\n", find_res(res, "error")->str);
@@ -2187,6 +2243,6 @@ int pfs_main(int argc, char **argv){
 
 #ifndef SERVICE
 int main(int argc, char **argv){
-    return pfs_main(argc, argv);
+    return pfs_main(argc, argv, "peshe@abv.bg", "Aldebaram");
 }
 #endif

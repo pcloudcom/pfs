@@ -7,6 +7,11 @@
 #define SZSERVICENAME          L"pfs"
 #define SZSERVICEDISPLAYNAME   L"PCloud File System"
 
+#define REGISTRY_KEY_PCLOUD    L"SOFTWARE\\PCloud\\pfs"
+
+#define KEY_USER               "username"
+#define KEY_PASS               "pass"
+#define KEY_AUTH               "auth"
 
 SERVICE_STATUS          ssStatus;
 SERVICE_STATUS_HANDLE   sshStatusHandle;
@@ -47,30 +52,57 @@ static char getFirstFreeDevice()
     return 0;
 }
 
-//static void getDataRegistry(wchar_t data[4*MAX_PATH])
-//{
-//    HRESULT hr;
-//    wchar_t buffer[4*MAX_PATH];
-//    DWORD cbDataSize = sizeof(buffer);
-//    HKEY hKey;
-//    hr = RegOpenKeyEx (HKEY_LOCAL_MACHINE, REGISTRY_KEY_PATH, 0, KEY_READ, &hKey);
-//    hr = RegQueryValueEx(hKey, L"accept", NULL, NULL, (unsigned char*)data, &cbDataSize);
-//    RegCloseKey(hKey);
-//
-//    if (!hr)
-//    {
-//    }
-//}
+static void storeKeys()
+{
+    HRESULT hr;
+    char buffer[8];
+    HKEY hKey;
+    hr = RegCreateKeyEx(HKEY_LOCAL_MACHINE, REGISTRY_KEY_PCLOUD, 0, NULL, 0,
+                        KEY_ALL_ACCESS, NULL, &hKey, NULL);
+    if (!hr)
+    {
+        strcpy(buffer, "");
+        hr = RegSetValueExA(hKey, KEY_USER, 0, REG_SZ, (LPBYTE)buffer, strlen(buffer)+1);
+        hr = RegSetValueExA(hKey, KEY_PASS, 0, REG_SZ, (LPBYTE)buffer, strlen(buffer)+1);
+        RegCloseKey(hKey);
+    }
+}
+
+
+static void getDataFromRegistry(const char* key, char data[MAX_PATH])
+{
+    HRESULT hr;
+    char buffer[MAX_PATH];
+    DWORD cbDataSize = sizeof(buffer);
+    HKEY hKey;
+    hr = RegOpenKeyEx(HKEY_LOCAL_MACHINE, REGISTRY_KEY_PCLOUD, 0, KEY_READ, &hKey);
+    if (hr)
+    {
+        storeKeys();
+        hr = RegOpenKeyEx(HKEY_LOCAL_MACHINE, REGISTRY_KEY_PCLOUD, 0, KEY_READ, &hKey);
+    }
+    if (!hr)
+    {
+        hr = RegQueryValueExA(hKey, key, NULL, NULL, (LPBYTE)data, &cbDataSize);
+        RegCloseKey(hKey);
+    }
+}
 
 
 DWORD WINAPI ThreadProc(LPVOID lpParam)
 {
     char mountPoint[3] = "g:";
+    char username[MAX_PATH]="";
+    char password[MAX_PATH]="";
+
     char* params[2] = {(char *)"pfs", mountPoint};
+
     mountPoint[0] = getFirstFreeDevice();
-    //read auth data from registry
-    debug ("starting pfs to mount on %s\n", mountPoint);
-    return pfs_main(2, params);
+    getDataFromRegistry(KEY_USER, username);
+    getDataFromRegistry(KEY_PASS, password);
+    debug("username %s, password %s\n", username, password);
+    debug("starting pfs to mount on %s\n", mountPoint);
+    return pfs_main(2, params, username, password);
 }
 
 
@@ -81,18 +113,21 @@ VOID WINAPI ServiceStart(const wchar_t * config_file)
     debug("Thread created\n");
     while (!bStop)
     {
-        Sleep (5000);
+        Sleep (1000);
     }
     debug("Thread stopped\n");
-    WaitForSingleObject(hThread, 5000);
+    WaitForSingleObject(hThread, 500);
     CloseHandle(hThread);
     ReportStatusToSCMgr(SERVICE_STOPPED, NO_ERROR, 0);
 }
 
+
 VOID WINAPI ServiceStop()
 {
     bStop=TRUE;
+    Sleep (2000);
 }
+
 
 VOID WINAPI service_ctrl(DWORD dwCtrlCode)
 {
@@ -151,7 +186,7 @@ void CmdInstallService()
 
     if (StartService(schService, 0, NULL))
     {
-        debug("Starting %S.", SZSERVICEDISPLAYNAME);
+        debug("Starting %S.\n", SZSERVICEDISPLAYNAME);
         Sleep(1000);
         while (QueryServiceStatus(schService, &ssStatus))
         {
@@ -192,7 +227,7 @@ void CmdRemoveService()
         {
             if (ControlService(schService, SERVICE_CONTROL_STOP, &ssStatus))
             {
-                debug("Stopping %S.", SZSERVICEDISPLAYNAME);
+                debug("Stopping %S.\n", SZSERVICEDISPLAYNAME);
                 Sleep(1000);
                 while(QueryServiceStatus(schService, &ssStatus))
                 {
@@ -248,6 +283,7 @@ VOID WINAPI service_main(DWORD dwArgc, LPTSTR *lpszArgv)
     }
 }
 
+
 int main(int argc, char* args[])
 {
     SERVICE_TABLE_ENTRY dispatchTable[] =
@@ -290,7 +326,7 @@ int main(int argc, char* args[])
             {
                 if (StartService(schService, 0, NULL))
                 {
-                    debug("Starting %S.", SZSERVICENAME);
+                    debug("Starting %S.\n", SZSERVICENAME);
                     Sleep(1000);
                     while(QueryServiceStatus(schService, &ssStatus))
                     {
@@ -329,6 +365,6 @@ dispatch:
     fprintf(stdout,
         "Usage\n"
         "-install\t\tinstall the service\n"
-        "-remove\t\tremove the service\n");
+        "-remove \t\tremove the service\n");
     return 1;
 }
