@@ -617,9 +617,9 @@ static void diff_modifyfile_file(binresult *meta, time_t mtime){
           par->tfolder.nodes=realloc(par->tfolder.nodes, sizeof(node *)*par->tfolder.nodealloc);
         }
         par->tfolder.nodes[par->tfolder.nodecnt++]=f;
-        f->tfolder.foldercnt++;
-        f->modifytime=mtime;
-        f->parent=par;
+        par->tfolder.foldercnt++;
+        par->modifytime=mtime;
+        f->parent=parent=par;
       }
     }
   }
@@ -636,8 +636,10 @@ static void diff_modifyfile_folder(binresult* meta, time_t mtime){
   pthread_mutex_lock(&treelock);
   f=get_folder_by_id(folderid);
   if (f){
-    f->createtime=find_res(meta, "created")->num+timeoff;
-    f->modifytime=find_res(meta, "modified")->num+timeoff;
+    res = find_res(meta, "created");
+    if (res) f->createtime=res->num+timeoff;
+    res = find_res(meta, "modified");
+    if (res) f->modifytime=res->num+timeoff;
     res=find_res(meta, "name");
     if (res){
       debug("folder name -> %s\n", res->str);
@@ -661,8 +663,8 @@ static void diff_modifyfile_folder(binresult* meta, time_t mtime){
           par->tfolder.nodes=realloc(par->tfolder.nodes, sizeof(node *)*par->tfolder.nodealloc);
         }
         par->tfolder.nodes[par->tfolder.nodecnt++]=f;
-        f->tfolder.foldercnt++;
-        f->modifytime=mtime;
+        par->tfolder.foldercnt++;
+        par->modifytime=mtime;
         f->parent=par;
       }
     }
@@ -2129,9 +2131,14 @@ static struct fuse_operations fs_oper={
   .utimens = fs_utimens
 };
 
-int main(int argc, char **argv){
+int pfs_main(int argc, char **argv){
   int r = 0;
   binresult *res, *subres;
+
+  debug ("starting - argc: %d\n", argc);
+  for (r = 0; r < argc; ++r)
+    debug("\t %s \n", argv[r]);
+
   if (usessl){
     sock=api_connect_ssl();
     diffsock=api_connect_ssl();
@@ -2177,3 +2184,9 @@ int main(int argc, char **argv){
   r = fuse_main(argc, argv, &fs_oper, NULL);
   return r;
 }
+
+#ifndef SERVICE
+int main(int argc, char **argv){
+    return pfs_main(argc, argv);
+}
+#endif

@@ -8,9 +8,11 @@
 		<Build>
 			<Target title="Debug">
 				<Option output="./bin/Debug/pfs" prefix_auto="1" extension_auto="1" />
+				<Option working_dir="./bin/Debug" />
 				<Option object_output="obj/Debug/" />
 				<Option type="1" />
 				<Option compiler="gcc" />
+				<Option use_console_runner="0" />
 				<Option parameters="m: -d" />
 				<Compiler>
 					<Add option="-Wall" />
@@ -63,6 +65,24 @@
 				<Linker>
 					<Add option="-s" />
 					<Add library=".\bin\D-64\libfuse4Win.a" />
+				</Linker>
+			</Target>
+			<Target title="Service">
+				<Option output="./bin/Release/pfs" prefix_auto="1" extension_auto="1" />
+				<Option working_dir="" />
+				<Option object_output="obj/Release/" />
+				<Option type="2" />
+				<Option compiler="gcc" />
+				<Option parameters="g:" />
+				<Compiler>
+					<Add option="-O3" />
+					<Add option="-O2" />
+					<Add option="-Wall" />
+					<Add option="-DSERVICE" />
+				</Compiler>
+				<Linker>
+					<Add option="-s" />
+					<Add library=".\bin\Release\libfuse4Win.a" />
 				</Linker>
 			</Target>
 		</Build>
