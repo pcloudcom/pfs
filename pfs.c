@@ -564,7 +564,6 @@ static void diff_create_file(binresult *meta, time_t mtime){
     f->tfolder.nodes=realloc(f->tfolder.nodes, sizeof(node *)*f->tfolder.nodealloc);
   }
   f->tfolder.nodes[f->tfolder.nodecnt++]=file;
-  f->tfolder.foldercnt++;
   f->modifytime=mtime;
   file->parent=f;
   list_add(files[file->tfile.fileid%HASH_SIZE], file);
@@ -669,7 +668,6 @@ static void diff_modifyfile_file(binresult *meta, time_t mtime){
           par->tfolder.nodes=realloc(par->tfolder.nodes, sizeof(node *)*par->tfolder.nodealloc);
         }
         par->tfolder.nodes[par->tfolder.nodecnt++]=f;
-        par->tfolder.foldercnt++;
         par->modifytime=mtime;
         f->parent=par;
       }
@@ -1079,17 +1077,18 @@ static int fs_creat(const char *path, mode_t mode, struct fuse_file_info *fi){
   fileid=find_res(res, "fileid")->num;
   free(res);
   pthread_mutex_lock(&treelock);
-  treesleep++;
   while (1){
     entry=get_file_by_id(fileid);
     if (entry){
       entry->tfile.refcnt++;
       break;
     }
-    else
+    else{
+      treesleep++;
       pthread_cond_wait(&treecond, &treelock);
+      treesleep--;
+    }
   }
-  treesleep--;
   pthread_mutex_unlock(&treelock);
   of=new_file();
   of->fd=fd;
@@ -2056,6 +2055,20 @@ static int fs_rename(const char *old_path, const char *new_path){
   else{
     result = rename_file(srcid, new_path);
   }
+  if (!result){
+    pthread_mutex_lock(&treelock);
+    while (1){
+      if (get_node_by_path(new_path)){
+        break;
+      }
+      else{
+        treesleep++;
+        pthread_cond_wait(&treecond, &treelock);
+        treesleep--;
+      }
+    }
+    pthread_mutex_unlock(&treelock);
+  }
   return result;
 }
 
@@ -2272,6 +2285,6 @@ int pfs_main(int argc, char **argv, const char* username, const char* password){
 
 #ifndef SERVICE
 int main(int argc, char **argv){
-    return pfs_main(argc, argv, "peshe@abv.bg", "Aldebaram");
+    return pfs_main(argc, argv, NULL, NULL);
 }
 #endif
