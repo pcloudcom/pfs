@@ -84,7 +84,7 @@ VOID WINAPI ServiceStart(const wchar_t * config_file)
         Sleep (5000);
     }
     debug("Thread stopped\n");
-    WaitForSingleObject(hThread, 30000);
+    WaitForSingleObject(hThread, 5000);
     CloseHandle(hThread);
     ReportStatusToSCMgr(SERVICE_STOPPED, NO_ERROR, 0);
 }
@@ -115,8 +115,8 @@ VOID WINAPI service_ctrl(DWORD dwCtrlCode)
 
 void CmdInstallService()
 {
-    SC_HANDLE   schService;
-    SC_HANDLE   schSCManager;
+    SC_HANDLE   schService = NULL;
+    SC_HANDLE   schSCManager = NULL;
 
     TCHAR szPath[512];
 
@@ -146,6 +146,7 @@ void CmdInstallService()
     } else
     {
         debug("OpenSCManager failed!\n");
+        return;
     }
 
     if (StartService(schService, 0, NULL))
@@ -276,8 +277,8 @@ int main(int argc, char* args[])
     }
     else
     {
-        SC_HANDLE   schService;
-        SC_HANDLE   schSCManager;
+        SC_HANDLE   schService = NULL;
+        SC_HANDLE   schSCManager = NULL;
         SERVICE_STATUS          ssStatus;
 
         StartServiceCtrlDispatcher(dispatchTable);
@@ -315,6 +316,7 @@ int main(int argc, char* args[])
             else
             {
                 debug ("Failed to load the service... \n");
+                return 1;
             }
         }
 
