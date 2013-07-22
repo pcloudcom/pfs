@@ -619,7 +619,7 @@ static void diff_modifyfile_file(binresult *meta, time_t mtime){
         par->tfolder.nodes[par->tfolder.nodecnt++]=f;
         par->tfolder.foldercnt++;
         par->modifytime=mtime;
-        f->parent=parent=par;
+        f->parent=par;
       }
     }
   }
