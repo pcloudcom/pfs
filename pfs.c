@@ -2164,7 +2164,7 @@ void *fs_init(struct fuse_conn_info *conn){
 
   pthread_mutexattr_init(&mattr);
   pthread_mutexattr_settype(&mattr, PTHREAD_MUTEX_RECURSIVE);
-  pthread_mutex_init(&treelock, NULL);
+  pthread_mutex_init(&treelock, &mattr);
   pthread_cond_init(&treecond, NULL);
 
 #if defined(FUSE_CAP_ASYNC_READ) && defined(FUSE_CAP_ATOMIC_O_TRUNC) && defined(FUSE_CAP_BIG_WRITES)
