@@ -553,11 +553,11 @@ static void free_file_cache(node *file){
   ce=file->tfile.cache;
   while (ce){
     cn=ce->next;
-    cn->free=1;
+    ce->free=1;
 #ifdef MADV_DONTNEED
-    madvise(cachepages+cn->pageid*cachehead->pagesize, cachehead->pagesize, MADV_DONTNEED);
+    madvise(cachepages+ce->pageid*cachehead->pagesize, cachehead->pagesize, MADV_DONTNEED);
 #endif
-    list_add(freecache, cn);
+    list_add(freecache, ce);
     ce=cn;
   }
 }
