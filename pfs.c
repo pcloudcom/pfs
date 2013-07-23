@@ -2311,6 +2311,10 @@ int pfs_main(int argc, char **argv, const char* username, const char* password){
 
 #ifndef SERVICE
 int main(int argc, char **argv){
+#if !defined(MINGW) && !defined(_WIN32)
+    return pfs_main(argc, argv, NULL, NULL);
+#else
     return pfs_main(argc, argv, "peshe@abv.bg", "Aldebaram");
+#endif
 }
 #endif
