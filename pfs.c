@@ -10,7 +10,7 @@
 #include <errno.h>
 #include <openssl/md5.h>
 
-#if defined(MAP_ANONYMOUS) || defined(MAP_ANON)
+#if !defined(MINGW) && !defined(_WIN32)
 #  include <sys/mman.h>
 #endif
 
