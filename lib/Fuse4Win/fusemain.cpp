@@ -528,9 +528,9 @@ int impl_fuse_context::move_file(LPCWSTR file_name, LPCWSTR new_file_name,
 	if (ops_.getattr(new_name.c_str(),&stbuf)!=-ENOENT)
 	{
 		//Cannot delete directory
-		if ((stbuf.st_mode&S_IFDIR)!=0) return -EISDIR;
-		if (!ops_.unlink) return -EINVAL;
-		CHECKED(ops_.unlink(new_name.c_str()));
+		if ((stbuf.st_mode&S_IFDIR)==0 && ops_.unlink){
+            CHECKED(ops_.unlink(new_name.c_str()));
+		}
 	}
 
 	return ops_.rename(name.c_str(),new_name.c_str());
