@@ -1374,6 +1374,7 @@ static int fs_open(const char *path, struct fuse_file_info *fi){
   of=new_file();
   of->fd=0;
   of->file=entry;
+  // no need to lock of->mutex as nobody has a pointer to of for now
   of->refcnt++;
 //  debug("fs_open - file ID %u\n", (uint32_t)of->file->tfile.fileid);
   fi->fh=(uintptr_t)of;
@@ -1441,6 +1442,7 @@ static void check_old_data_finished(void *_pf, binresult *res){
       pthread_cond_broadcast(&page->cond);
     }
     pthread_mutex_unlock(&pageslock);
+    dec_openfile_refcnt(of);
     return;
   }
   else if (rs->num)
@@ -1518,7 +1520,9 @@ err:
     pf=(pagefile *)malloc(sizeof(pagefile));
     pf->of=of;
     pf->page=entries[i];
+    pthread_mutex_lock(&of->mutex);
     of->refcnt++;
+    pthread_mutex_unlock(&of->mutex);
     fd_magick_start(of);
     cmd_callback("file_pread_ifmod", check_old_data_finished, pf, fdparam, P_LSTR("md5", md5x, MD5_DIGEST_LENGTH*2),
                      P_NUM("offset", entries[i]->offset*cachehead->pagesize), P_NUM("count", cachehead->pagesize));
@@ -1709,11 +1713,9 @@ static void fs_write_finished(void *_of, binresult *res){
   if (!res){
     debug("fs_write_finished - error\n");
     of->error=NOT_CONNECTED_ERR;
-    of->refcnt--;
     if (of->waitcmd)
       pthread_cond_broadcast(&of->cond);
-    pthread_mutex_unlock(&of->mutex);
-    return;
+    goto decref;
   }
   sub=find_res(res, "result");
   if (!sub || sub->type!=PARAM_NUM){
@@ -1734,6 +1736,7 @@ static void fs_write_finished(void *_of, binresult *res){
     if (!of->unackcomd && of->waitcmd)
       pthread_cond_broadcast(&of->cond);
   }
+decref:
   dec_openfile_refcnt_locked(of);
   pthread_mutex_unlock(&of->mutex);
 }
@@ -1743,7 +1746,6 @@ static int fs_write(const char *path, const char *buf, size_t size, off_t offset
   cacheentry *ce;
   openfile *of;
   uint32_t frompageoff, topageoff;
-  binresult *res;
   of=(openfile *)((uintptr_t)fi->fh);
 
 //  debug ("fs_write %s\n", path);
@@ -1758,25 +1760,23 @@ static int fs_write(const char *path, const char *buf, size_t size, off_t offset
   of->refcnt++;
   pthread_mutex_unlock(&of->mutex);
   fd_magick_start(of);
-  res=cmd_data_callback("file_pwrite", buf, size, fs_write_finished, of, fdparam, P_NUM("offset", offset));
+  cmd_data_callback("file_pwrite", buf, size, fs_write_finished, of, fdparam, P_NUM("offset", offset));
   fd_magick_stop();
   frompageoff=offset/cachehead->pagesize;
   topageoff=((offset+size+cachehead->pagesize-1)/cachehead->pagesize)-1;
   pthread_mutex_lock(&pageslock);
   ce=of->file->tfile.cache;
   while (ce){
-    if (ce->offset>=frompageoff && ce->offset<=topageoff)
+    if (ce->offset>=frompageoff && ce->offset<=topageoff){
       ce->fetchtime=0;
+      ce->filehash=0;
+    }
     ce=ce->next;
   }
   pthread_mutex_unlock(&pageslock);
-  if (!res)
-    return -EIO;
-  else{
-    if (offset+size>of->file->tfile.size)
-      of->file->tfile.size=offset+size;
-    return size;
-  }
+  if (offset+size>of->file->tfile.size)
+    of->file->tfile.size=offset+size;
+  return size;
 }
 
 static void fs_ftruncate_finished(void *_of, binresult *res){
@@ -1844,9 +1844,11 @@ static int of_sync(openfile *of){
     pthread_mutex_unlock(&of->mutex);
     return of->error;
   }
-  of->waitcmd++;
-  pthread_cond_wait(&of->cond, &of->mutex);
-  of->waitcmd--;
+  while (!of->error && of->unackcomd){
+    of->waitcmd++;
+    pthread_cond_wait(&of->cond, &of->mutex);
+    of->waitcmd--;
+  }
   pthread_mutex_unlock(&of->mutex);
   return of->error;
 }
