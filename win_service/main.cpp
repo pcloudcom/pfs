@@ -43,6 +43,7 @@ BOOL ReportStatusToSCMgr(DWORD dwCurrentState, DWORD dwWin32ExitCode, DWORD dwWa
     return fResult;
 }
 
+
 static char getFirstFreeDevice()
 {
     DWORD devices = GetLogicalDrives();
@@ -51,6 +52,7 @@ static char getFirstFreeDevice()
             return i + 'A';
     return 0;
 }
+
 
 static void storeKeys()
 {
@@ -100,8 +102,7 @@ DWORD WINAPI ThreadProc(LPVOID lpParam)
     mountPoint[0] = getFirstFreeDevice();
     getDataFromRegistry(KEY_USER, username);
     getDataFromRegistry(KEY_PASS, password);
-    debug("username %s, password %s\n", username, password);
-    debug("starting pfs to mount on %s\n", mountPoint);
+
     return pfs_main(2, params, username, password);
 }
 
@@ -177,6 +178,7 @@ void CmdInstallService()
         } else
         {
             debug("CreateService failed!\n");
+            return;
         }
     } else
     {
