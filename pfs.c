@@ -86,7 +86,7 @@ static int fs_inited = 0;
                       __ptr=__ret; for (__i=0; __i<16; __i++){*__ptr++=hexdigits[__md5b[__i]/16];*__ptr++=hexdigits[__md5b[__i]%16];}\
                       *__ptr=0; __ret;})
 
-#define dec_refcnt(_en) do {if (--(_en)->tfile.refcnt==0 && (_en)->isdeleted) {free_file_cache(_en); free(_en);} } while (0)
+#define dec_refcnt(_en) do {if (--(_en)->tfile.refcnt==0 && (_en)->isdeleted) {free_file_cache(_en); free(_en->name); free(_en);} } while (0)
 
 #define fd_magick_start(__of) {\
   binparam fdparam;\
@@ -151,7 +151,7 @@ typedef struct _node {
   struct _node *next;
   struct _node **prev;
   struct _node *parent;
-  const char *name;
+  char *name;
   time_t createtime;
   time_t modifytime;
   union {
@@ -500,9 +500,9 @@ static void diff_create_folder(binresult *meta, time_t mtime){
   node *folder, *f;
   uint64_t parentid;
   name=find_res(meta, "name");
-  folder=(node *)malloc(sizeof(node)+name->length+1);
-  memcpy(folder+1, name->str, name->length+1);
-  folder->name=(char *)(folder+1);
+  folder=(node *)malloc(sizeof(node));
+  folder->name=malloc(name->length+1);
+  memcpy(folder->name, name->str, name->length+1);
   folder->createtime=find_res(meta, "created")->num+timeoff;
   folder->modifytime=find_res(meta, "modified")->num+timeoff;
   folder->tfolder.folderid=find_res(meta, "folderid")->num;
@@ -517,6 +517,7 @@ static void diff_create_folder(binresult *meta, time_t mtime){
   f=get_folder_by_id(parentid);
   if (!f){
     pthread_mutex_unlock(&treelock);
+    free(folder->name);
     free(folder);
     return;
   }
@@ -572,6 +573,7 @@ static void delete_file(node *file, int removefromparent){
   }
   else {
     free_file_cache(file);
+    free(file->name);
     free(file);
   }
 }
@@ -598,9 +600,9 @@ static void diff_create_file(binresult *meta, time_t mtime){
   name=find_res(meta, "name");
   if (!name)
     return;
-  file=(node *)malloc(sizeof(node)+name->length+1);
-  memcpy(file+1, name->str, name->length+1);
-  file->name=(char *)(file+1);
+  file=(node *)malloc(sizeof(node));
+  file->name=malloc(name->length+1);
+  memcpy(file->name, name->str, name->length+1);
   file->createtime=find_res(meta, "created")->num+timeoff;
   file->modifytime=find_res(meta, "modified")->num+timeoff;
   file->tfile.fileid=find_res(meta, "fileid")->num;
@@ -613,6 +615,7 @@ static void diff_create_file(binresult *meta, time_t mtime){
   f=get_folder_by_id(parentid);
   if (!f){
     pthread_mutex_unlock(&treelock);
+    free(file->name);
     free(file);
     return;
   }
@@ -661,8 +664,7 @@ static void diff_modifyfile_file(binresult *meta, time_t mtime){
     res=find_res(meta, "name");
     if (res){
       debug("name -> %s\n", res->str);
-      f=realloc(f, sizeof(node)+res->length+1);
-      f->name = (char*)(f+1);
+      f->name=realloc(f->name, res->length+1);
       memcpy((void*)f->name, res->str, res->length+1);
     }
     res = find_res(meta, "parentfolderid");
@@ -711,9 +713,8 @@ static void diff_modifyfile_folder(binresult* meta, time_t mtime){
     res=find_res(meta, "name");
     if (res){
       debug("folder name -> %s\n", res->str);
-      f=realloc(f, sizeof(node)+res->length+1);
-      f->name = (char*)(f+1);
-      memcpy((void*)f->name, res->str, res->length+1);
+      f->name=realloc(f->name, res->length+1);
+      memcpy(f->name, res->str, res->length+1);
     }
     res = find_res(meta, "parentfolderid");
     if (res){
@@ -756,6 +757,7 @@ static void delete_folder(node *folder, int removefromparent){
   if (removefromparent)
     remove_from_parent(folder);
   list_del(folder);
+  free(folder->name);
   free(folder);
 }
 
@@ -2071,6 +2073,7 @@ static int fs_rename(const char *old_path, const char *new_path){
     result = rename_file(srcid, new_path);
   }
   if (!result){
+    debug("waiting rename...\n");
     pthread_mutex_lock(&treelock);
     while (1){
       if (get_node_by_path(new_path)){
@@ -2083,6 +2086,7 @@ static int fs_rename(const char *old_path, const char *new_path){
       }
     }
     pthread_mutex_unlock(&treelock);
+    debug("rename done...\n");
   }
   return result;
 }
