@@ -292,6 +292,8 @@ static binresult *do_cmd(const char *command, size_t cmdlen, const void *data, s
   task mytask, *ptask;
   binresult *res;
 //  debug("Do-cmd enter %s\n", command);
+  pthread_mutex_init(&mymutex, NULL);
+  pthread_cond_init(&mycond, NULL);
   if (callback){
     ptask=new(task);
     ptask->type=TASK_TYPE_CALL;
@@ -299,8 +301,6 @@ static binresult *do_cmd(const char *command, size_t cmdlen, const void *data, s
     ptask->result=(binresult *)callbackptr;
   }
   else{
-    pthread_mutex_init(&mymutex, NULL);
-    pthread_cond_init(&mycond, NULL);
     ptask=&mytask;
     ptask->mutex=&mymutex;
     ptask->cond=&mycond;
@@ -333,15 +333,22 @@ static binresult *do_cmd(const char *command, size_t cmdlen, const void *data, s
   if (callback){
     if (!res)
       callback(callbackptr, NULL);
-    return res;
+    goto free_data;
   }
-  if (!res)
-    return NULL;
+  if (!res){
+    goto free_data;
+  }
+
 //  debug("Do-cmd wait %s\n", command);
   pthread_cond_wait(&mycond, &mymutex);
   pthread_mutex_unlock(&mymutex);
 //  debug("Do-cmd late exit %s\n", command);
-  return ptask->result;
+  res = ptask->result;
+
+free_data:
+  pthread_cond_destroy(&mycond);
+  pthread_mutex_destroy(&mymutex);
+  return res;
 }
 
 static void cancel_all(){
@@ -601,7 +608,7 @@ static void diff_create_file(binresult *meta, time_t mtime){
   file->isdeleted=0;
   parentid=find_res(meta, "parentfolderid")->num;
   pthread_mutex_lock(&treelock);
-  
+
   name=find_res(meta, "deletedfileid");
   if (name){
     uint64_t old_id=name->num;
@@ -613,7 +620,7 @@ static void diff_create_file(binresult *meta, time_t mtime){
       delete_file(f, 1);
     }
   }
-  
+
   f=get_folder_by_id(parentid);
   if (!f){
     pthread_mutex_unlock(&treelock);
@@ -638,7 +645,7 @@ static void diff_modifyfile_file(binresult *meta, time_t mtime){
   uint64_t fileid;
   binresult *res;
   node *f;
-  debug("modify file in \n");
+//  debug("modify file in \n");
   fileid=find_res(meta, "fileid")->num;
   pthread_mutex_lock(&treelock);
 
@@ -663,7 +670,7 @@ static void diff_modifyfile_file(binresult *meta, time_t mtime){
     f->tfile.hash=find_res(meta, "hash")->num;
     res=find_res(meta, "name");
     if (res){
-      debug("name -> %s\n", res->str);
+//      debug("name -> %s\n", res->str);
       f->name=realloc(f->name, res->length+1);
       memcpy((void*)f->name, res->str, res->length+1);
     }
@@ -673,7 +680,6 @@ static void diff_modifyfile_file(binresult *meta, time_t mtime){
       if (parent != f->parent->tfolder.folderid){
         node* par;
         debug("file change parent\n");
-        remove_from_parent(f);
         par=get_folder_by_id(parent);
         if (!par){
           pthread_mutex_unlock(&treelock);
@@ -686,21 +692,23 @@ static void diff_modifyfile_file(binresult *meta, time_t mtime){
         }
         par->tfolder.nodes[par->tfolder.nodecnt++]=f;
         par->modifytime=mtime;
+
+        remove_from_parent(f);
         f->parent=par;
-      }
+     }
     }
   }
   if (treesleep)
     pthread_cond_broadcast(&treecond);
   pthread_mutex_unlock(&treelock);
-  debug("modify file out OK\n");
+//  debug("modify file out OK\n");
 }
 
 static void diff_modifyfile_folder(binresult* meta, time_t mtime){
   uint64_t folderid;
   binresult *res;
   node *f;
-  debug("modify folder in\n");
+//  debug("modify folder in\n");
   folderid=find_res(meta, "folderid")->num;
 
   pthread_mutex_lock(&treelock);
@@ -712,7 +720,7 @@ static void diff_modifyfile_folder(binresult* meta, time_t mtime){
     if (res) f->modifytime=res->num+timeoff;
     res=find_res(meta, "name");
     if (res){
-      debug("folder name -> %s\n", res->str);
+//      debug("folder name -> %s\n", res->str);
       f->name=realloc(f->name, res->length+1);
       memcpy(f->name, res->str, res->length+1);
     }
@@ -721,8 +729,7 @@ static void diff_modifyfile_folder(binresult* meta, time_t mtime){
       uint64_t parent = res->num;
       if (parent != f->parent->tfolder.folderid){
         node* par;
-        debug("folder - change parent\n");
-        remove_from_parent(f);
+        debug("folder - change parent %u -> %u\n", (uint32_t)f->parent->tfolder.folderid, (uint32_t)parent);
         par=get_folder_by_id(parent);
         if (!par){
           pthread_mutex_unlock(&treelock);
@@ -736,6 +743,8 @@ static void diff_modifyfile_folder(binresult* meta, time_t mtime){
         par->tfolder.nodes[par->tfolder.nodecnt++]=f;
         par->tfolder.foldercnt++;
         par->modifytime=mtime;
+
+        remove_from_parent(f);
         f->parent=par;
       }
     }
@@ -743,7 +752,7 @@ static void diff_modifyfile_folder(binresult* meta, time_t mtime){
   if (treesleep)
     pthread_cond_broadcast(&treecond);
   pthread_mutex_unlock(&treelock);
-  debug("modify folder out - OK\n");
+//  debug("modify folder out - OK\n");
 }
 
 static void delete_folder(node *folder, int removefromparent){
@@ -1004,7 +1013,7 @@ static int fs_statfs(const char *path, struct statvfs *stbuf){
   binresult *res;
   uint64_t q, uq;
   time_t tm;
-  debug ("fs_statfs %s\n", path);
+//  debug ("fs_statfs %s\n", path);
   pthread_mutex_lock(&treelock);
   entry=get_node_by_path(path);
   pthread_mutex_unlock(&treelock);
@@ -1028,8 +1037,10 @@ static int fs_statfs(const char *path, struct statvfs *stbuf){
       }
       free(res);
     }
-    else
+    else{
+      debug("statfs problem\n");
       return NOT_CONNECTED_ERR;
+    }
   }
   stbuf->f_bsize=FS_BLOCK_SIZE;
   stbuf->f_frsize=FS_BLOCK_SIZE;
@@ -1057,7 +1068,7 @@ static int fs_creat(const char *path, mode_t mode, struct fuse_file_info *fi){
   const char *name;
   openfile *of;
   uint64_t folderid, fd, fileid;
-  debug("create - %s \n", path);
+//  debug("create - %s \n", path);
   pthread_mutex_lock(&treelock);
   entry=get_parent_folder(path, &name);
   if (!entry){
@@ -1112,7 +1123,7 @@ static int fs_creat(const char *path, mode_t mode, struct fuse_file_info *fi){
   of->file=entry;
 //  debug("fs_creat - file ID %u\n", (uint32_t)of->file->tfile.fileid);
   fi->fh=(uintptr_t)of;
-  debug("create - out OK\n");
+//  debug("create - out OK\n");
   return 0;
 }
 
@@ -1400,6 +1411,8 @@ static void fs_release_finished(void *_of, binresult *res){
   while (of->refcnt)
     pthread_cond_wait(&of->cond, &of->mutex);
   pthread_mutex_unlock(&of->mutex);
+  pthread_cond_destroy(&of->cond);
+  pthread_mutex_destroy(&of->mutex);
   free(of);
 }
 
@@ -2045,16 +2058,16 @@ static int rename_file(uint64_t fileid, const char *new_path){
 static int rename_folder(uint64_t folderid, const char *new_path){
   binresult *res, *sub;
   int result = 0;
-  debug("rename folder to %s \n", new_path);
+//  debug("rename folder to %s \n", new_path);
   res=cmd("renamefolder", P_NUM("folderid", folderid), P_STR("topath", new_path));
   if (!res){
-    debug("rf - not connected\n");
+    debug("rename_folder - not connected\n");
     return NOT_CONNECTED_ERR;
   }
   sub=find_res(res, "result");
   if (!sub || sub->type!=PARAM_NUM){
     free(res);
-    debug("rf - no res\n");
+    debug("rename_folder - no result?\n");
     return -ENOENT;
   }
   if (sub->num!=0){
@@ -2086,7 +2099,7 @@ static int fs_rename(const char *old_path, const char *new_path){
     result = rename_file(srcid, new_path);
   }
   if (!result){
-    debug("waiting rename...\n");
+//    debug("waiting rename...\n");
     pthread_mutex_lock(&treelock);
     while (1){
       if (get_node_by_path(new_path)){
@@ -2099,7 +2112,7 @@ static int fs_rename(const char *old_path, const char *new_path){
       }
     }
     pthread_mutex_unlock(&treelock);
-    debug("rename done...\n");
+//    debug("rename done...\n");
   }
   return result;
 }

@@ -638,7 +638,8 @@ int impl_fuse_context::get_disk_free_space(PULONGLONG free_bytes_available,
 	if (!ops_.statfs) return -EINVAL;
 
 	struct statvfs vfs={0};
-	CHECKED(ops_.statfs("/",&vfs));
+	int res = ops_.statfs("/",&vfs);
+	if (res == -ENOENT) return res;
 
 	if (free_bytes_available!=NULL)
 		*free_bytes_available=uint64_t(vfs.f_bsize)*vfs.f_bavail;
