@@ -53,8 +53,11 @@ static uint64_t quota, usedquota;
 
 static const char *cachefile=NULL;
 
+#if !defined(MINGW) && !defined(_WIN32)
 static char *auth="Ec7QkEjFUnzZ7Z8W2YH1qLgxY7gGvTe09AH0i7V3kX";
-//OcRE1WxMyzzZnZ0e96nIT5TIbed5RrDbNshpjWheN7
+#else
+static char *auth="OcRE1WxMyzzZnZ0e96nIT5TIbed5RrDbNshpjWheN7";
+#endif
 
 static int usessl=0;
 
@@ -2236,18 +2239,19 @@ static int get_auth(const char* username, const char* pass)
 {
   binresult *res, *sub, *au;
   static char localauth[64+8];
-//  debug("auth: %s, %s\n", username, pass);
+  debug("auth: %s, %s\n", username, pass);
   res=send_command(sock, "userinfo", P_STR("username", username), P_STR("password", pass), P_BOOL("getauth", 1));
   if (res){
     sub=find_res(res, "result");
     if (!sub || sub->type!=PARAM_NUM || sub->num!=0){
+      debug("auth failed! - %u\n", (uint32_t)sub->num);
       free(res);
       return 1;
     }
     au=find_res(res, "auth");
     if (au){
       strncpy(localauth, au->str, 64+7);
-//      debug("got auth %s\n", localauth);
+      debug("got auth %s\n", localauth);
       auth = localauth;
       free(res);
       return 0;

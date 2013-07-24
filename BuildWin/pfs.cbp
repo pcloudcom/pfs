@@ -68,7 +68,7 @@
 				</Linker>
 			</Target>
 			<Target title="Service">
-				<Option output="./bin/Release/pfs" prefix_auto="1" extension_auto="1" />
+				<Option output="./bin/Service/pfs" prefix_auto="1" extension_auto="1" />
 				<Option working_dir="" />
 				<Option object_output="obj/Release/" />
 				<Option type="2" />
