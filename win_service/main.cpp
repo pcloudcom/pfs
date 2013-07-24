@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <windows.h>
+#include <Dbt.h>
 #include <ShlObj.h>
 
 #include "pfs.h"
@@ -102,6 +103,7 @@ DWORD WINAPI ThreadProc(LPVOID lpParam)
     debug("user:%s\n", username);
     getDataFromRegistry(KEY_PASS, password);
     debug("pass:%s\n", password);
+
     return pfs_main(2, params, username, password);
 }
 
@@ -110,10 +112,23 @@ VOID WINAPI ServiceStart(const wchar_t * config_file)
 {
     HANDLE hThread = CreateThread(NULL, 0, ThreadProc, NULL, 0, NULL);
     debug("Thread created\n");
+    int loop = 0;
     ReportStatusToSCMgr(SERVICE_RUNNING, NO_ERROR, 0);
     while (!bStop)
     {
         Sleep(500);
+        if (loop % 10 == 0)
+        {
+            DWORD recipients = BSM_ALLDESKTOPS | BSM_APPLICATIONS;
+            DEV_BROADCAST_VOLUME msg;
+            ZeroMemory(&msg, sizeof(msg));
+            msg.dbcv_size = sizeof(msg);
+            msg.dbcv_devicetype = DBT_DEVTYP_VOLUME;
+            msg.dbcv_unitmask = 1 << (mountPoint[0] - 'A');
+            BroadcastSystemMessage(0, &recipients, WM_DEVICECHANGE, DBT_DEVICEARRIVAL, (LPARAM)&msg);
+            loop = 0;
+        }
+        ++loop;
     }
     ReportStatusToSCMgr(SERVICE_STOP_PENDING, NO_ERROR, 0);
 
