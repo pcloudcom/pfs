@@ -356,6 +356,7 @@ free_data:
 
 static void cancel_all(){
   task *t;
+  debug("cancel_all\n");
   pthread_mutex_lock(&taskslock);
   while (tasks){
     t=tasks;
@@ -374,6 +375,7 @@ static void cancel_all(){
     pthread_mutex_lock(&taskslock);
   }
   pthread_mutex_unlock(&taskslock);
+  debug("cancel_all leave\n");
 }
 
 static void cancel_all_and_reconnect(){
@@ -391,6 +393,7 @@ static void cancel_all_and_reconnect(){
     else
       sock=api_connect();
     if (!sock){
+      debug("cancel_all_and_reconnect - failed to connect\n");
       sock=&null;
       pthread_mutex_unlock(&writelock);
       sleep(1);
@@ -401,11 +404,13 @@ static void cancel_all_and_reconnect(){
     else {
       res=send_command(sock, "userinfo", P_STR("auth", auth));
       if (!res){
+        debug("cancel_all_and_reconnect - failed to login\n");
         api_close(sock);
         sock=NULL;
       }
       else {
         if (find_res(res, "result")->num!=0){
+          debug("cancel_all_and_reconnect - problem on login\n");
           pthread_mutex_unlock(&writelock);
           while (1){
             cancel_all();
@@ -418,6 +423,7 @@ static void cancel_all_and_reconnect(){
   } while (!sock);
   pthread_mutex_unlock(&writelock);
   cancel_all();
+  debug("cancel_all_and_reconnect leave\n");
 }
 
 static void *receive_thread(void *ptr){
