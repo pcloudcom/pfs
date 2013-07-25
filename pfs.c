@@ -49,9 +49,11 @@ static time_t cachesec=30;
 
 static time_t laststatfs=0;
 
-static uint64_t quota, usedquota;
+static int checkifhashmatch=0;
 
 static const char *cachefile=NULL;
+
+static uint64_t quota, usedquota;
 
 #if !defined(MINGW) && !defined(_WIN32)
 static char *auth="Ec7QkEjFUnzZ7Z8W2YH1qLgxY7gGvTe09AH0i7V3kX";
@@ -1527,7 +1529,7 @@ err:
   pthread_mutex_lock(&pageslock);
   ce=of->file->tfile.cache;
   while (ce){
-    if (ce->offset>=frompageoff && ce->offset<=topageoff && ce->fetchtime+cachesec<=tm && !ce->waiting){
+    if (ce->offset>=frompageoff && ce->offset<=topageoff && ce->fetchtime+cachesec<=tm && !ce->waiting && (checkifhashmatch || ce->fetchtime==0 || ce->filehash!=of->file->tfile.hash)){
       ce->waiting=1;
       entries[pagecnt++]=ce;
     }
