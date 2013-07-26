@@ -45,7 +45,7 @@ static bool storeKey(LPCSTR key, const char * val)
 }
 
 
-static bool setDataToRegistry(LPWSTR username, LPWSTR pass)
+bool CPCloudDlg::setDataToRegistry(LPWSTR username, LPWSTR pass)
 {
     char mbUser[2*MAX_PATH];
     char mbPass[2*MAX_PATH];
@@ -55,7 +55,7 @@ static bool setDataToRegistry(LPWSTR username, LPWSTR pass)
 }
 
 
-static void restartService()
+void CPCloudDlg::restartService()
 {
     SC_HANDLE       schService;
     SERVICE_STATUS  ssStatus;
@@ -87,9 +87,18 @@ static void restartService()
                 else break;
             }
         }
+        Sleep(1000);
+        char val[32] = {0,};
+        if (readKey("lr", val))
+        {
+            if (val[0] == '1')
+                MessageBox(L"Failed to connecto to the PCloud. Check your connection,", L"Network Error", MB_ICONEXCLAMATION);
+            else if (val[0] == '2')
+                MessageBox(L"Failed to login!");
+            storeKey("lr", "");
+        }
     }
 }
-
 
 
 CPCloudDlg::CPCloudDlg(CWnd* pParent /*=NULL*/)
@@ -109,7 +118,6 @@ BEGIN_MESSAGE_MAP(CPCloudDlg, CDialogEx)
     ON_BN_CLICKED(IDCANCEL, &CPCloudDlg::OnBnClickedCancel)
     ON_BN_CLICKED(IDOK, &CPCloudDlg::OnBnClickedOk)
     ON_NOTIFY(NM_CLICK, IDC_SYSLINK1, &CPCloudDlg::OnNMClickSyslink1)
-    ON_MESSAGE((WM_USER+876), OnServiceNotify)
 END_MESSAGE_MAP()
 
 
@@ -188,7 +196,9 @@ void CPCloudDlg::OnBnClickedOk()
     if (setDataToRegistry(username, password))
     {
         if (MessageBox(L"Reconnect PCloud?", L"Reconnect", MB_YESNO) == IDYES)
+        {
             restartService();
+        }
     }
     else
     {
@@ -202,20 +212,4 @@ void CPCloudDlg::OnNMClickSyslink1(NMHDR *pNMHDR, LRESULT *pResult)
     PNMLINK pNMLink = (PNMLINK)pNMHDR;
     ::ShellExecute(m_hWnd, L"open", pNMLink->item.szUrl, NULL, NULL, SW_SHOWMAXIMIZED);
     *pResult = 0;
-}
-
-
-LRESULT CPCloudDlg::OnServiceNotify(WPARAM wParam, LPARAM lParam)
-{
-    MessageBox(L"ReceivedMSG.", L"PCloud");
-    switch(lParam)
-    {
-    case 1:
-        MessageBox(L"Failed to connect to PCloud.", L"PCloud");
-        break;
-    case 2:
-        MessageBox(L"Invalid username or password.", L"PCloud");
-        break;
-    }
-    return 0;
 }

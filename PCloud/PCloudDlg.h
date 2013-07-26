@@ -36,4 +36,8 @@ public:
     afx_msg void OnBnClickedOk();
     afx_msg void OnNMClickSyslink1(NMHDR *pNMHDR, LRESULT *pResult);
     afx_msg LRESULT OnServiceNotify(WPARAM wParam, LPARAM lParam);
+
+private:
+    bool setDataToRegistry(LPWSTR username, LPWSTR pass);
+    void restartService();
 };

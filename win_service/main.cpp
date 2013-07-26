@@ -105,6 +105,8 @@ DWORD WINAPI ThreadProc(LPVOID lpParam)
     char password[MAX_PATH]="";
     char* params[2] = {(char *)"pfs", mountPoint};
 
+    storeKey("lr", "");
+
     mountPoint[0] = getFirstFreeDevice();
     getDataFromRegistry(KEY_USER, username);
     debug("user:%s\n", username);
@@ -114,12 +116,12 @@ DWORD WINAPI ThreadProc(LPVOID lpParam)
     int res = pfs_main(2, params, username, password);
     if (res == ENOTCONN)
     {
-        SendMessageTimeout(HWND_BROADCAST, WM_USER+876, 0, 1, SMTO_BLOCK, 2000, NULL);
+        storeKey("lr", "1");
         debug("Send NotConnected msg\n");
     }
     else if (res == EACCES)
     {
-        SendMessageTimeout(HWND_BROADCAST, WM_USER+876, 0, 2, SMTO_BLOCK, 2000, NULL);
+        storeKey("lr", "2");
         debug("Send Access denied msg\n");
     }
     return res;
