@@ -43,13 +43,18 @@ static SSL_CTX *globalctx=NULL;
 static binresult BOOL_TRUE={PARAM_BOOL, 0, {1}};
 static binresult BOOL_FALSE={PARAM_BOOL, 0, {0}};
 
+#define debug(...) do {FILE *d=fopen("/tmp/pfsfs.txt", "a"); if(!d)break; fprintf(d, __VA_ARGS__); fclose(d);} while (0)
+
 static int writeallfd(int sock, const void *ptr, size_t len){
   ssize_t res;
   while (len){
     res=send(sock, ptr, len, 0);
     if (res==-1){
-      if (errno==EINTR || errno==EAGAIN)
+      debug(" ---  send failed\n");
+      if (errno==EINTR || errno==EAGAIN){
+        debug(" --- try again...\n");
         continue;
+      }
       return -1;
     }
     len-=res;
@@ -83,10 +88,13 @@ static ssize_t readallfd(int sock, void *ptr, size_t len){
   while (rd<len){
     ret=recv(sock, ptr+rd, len-rd, 0);
     if (ret==0){
+      debug("   ---  read - socket closed properly... \n");
       return -1;
     }
     else if (ret==-1){
+      debug("   ---  read - error... \n");
       if (errno==EINTR){
+        debug("   ---  read - try again \n");
         continue;
       }
       else{
