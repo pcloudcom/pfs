@@ -16,6 +16,13 @@
 #define KEY_AUTH               "auth"
 #define KEY_DELETE             "del"
 
+#ifndef ENOTCONN
+#   define ENOTCONN        107
+#endif
+
+#ifndef EACCES
+#define EACCES 13
+#endif
 DWORD                   dwErr = 0;
 BOOL                    bStop = FALSE;
 SERVICE_STATUS_HANDLE   sshStatusHandle;
@@ -104,7 +111,18 @@ DWORD WINAPI ThreadProc(LPVOID lpParam)
     getDataFromRegistry(KEY_PASS, password);
     debug("pass:%s\n", password);
 
-    return pfs_main(2, params, username, password);
+    int res = pfs_main(2, params, username, password);
+    if (res == ENOTCONN)
+    {
+        SendMessageTimeout(HWND_BROADCAST, WM_USER+876, 0, 1, SMTO_BLOCK, 2000, NULL);
+        debug("Send NotConnected msg\n");
+    }
+    else if (res == EACCES)
+    {
+        SendMessageTimeout(HWND_BROADCAST, WM_USER+876, 0, 2, SMTO_BLOCK, 2000, NULL);
+        debug("Send Access denied msg\n");
+    }
+    return res;
 }
 
 
