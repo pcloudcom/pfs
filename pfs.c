@@ -388,6 +388,7 @@ static void cancel_all_and_reconnect(){
   null.ssl=NULL;
   null.sock=-1;
   pthread_mutex_lock(&writelock);
+  debug("cancel_all_and_reconnect - after write lock\n");
   api_close(sock);
   do{
     if (usessl)
@@ -813,7 +814,7 @@ static void process_diff(binresult *diff){
   event=find_res(diff, "event");
   meta=find_res(diff, "metadata");
   tm=find_res(diff, "time")->num+timeoff;
-  debug("diff -> %s\n", event->str);
+//  debug("diff -> %s\n", event->str);
   if (event && event->type==PARAM_STR && meta && meta->type==PARAM_HASH){
     if (!strcmp(event->str, "createfolder"))
       diff_create_folder(meta, tm);
@@ -2290,7 +2291,7 @@ int pfs_main(int argc, char **argv, const char* username, const char* password){
   }
   if (!sock || !diffsock){
     fprintf(stderr, "Cannot connect to server\n");
-    return 1;
+    return ENOTCONN;
   }
 
   if (username && password){
@@ -2301,23 +2302,23 @@ int pfs_main(int argc, char **argv, const char* username, const char* password){
   res=send_command(sock, "userinfo", P_STR("auth", auth));
   if(!res){
     fprintf(stderr, "Login failed\n");
-    return 1;
+    return EACCES;
   }
   subres=find_res(res, "result");
   if (!subres || subres->type!=PARAM_NUM || subres->num!=0){
     fprintf(stderr, "Login failed (%s)\n", find_res(res, "error")->str);
-    return 1;
+    return EACCES;
   }
   free(res);
   res=send_command(diffsock, "userinfo", P_STR("auth", auth));
   if(!res){
     fprintf(stderr, "Login failed\n");
-    return 1;
+    return EACCES;
   }
   subres=find_res(res, "result");
   if (!subres || subres->type!=PARAM_NUM || subres->num!=0){
     fprintf(stderr, "Login failed (%s)\n", find_res(res, "error")->str);
-    return 1;
+    return EACCES;
   }
   free(res);
   rootfolder=new(node);
