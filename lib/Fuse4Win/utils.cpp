@@ -9,11 +9,11 @@ char* wchar_to_utf8(const wchar_t* str)
 		return NULL;
 
 	//Determine required length
-	int ln=WideCharToMultiByte(CP_ACP,0,str,-1,NULL,0,NULL,NULL);
+	int ln=WideCharToMultiByte(CP_UTF8,0,str,-1,NULL,0,NULL,NULL);
 	char *res=(char *)malloc(sizeof(char)*ln);
 
 	//Convert to Unicode
-	WideCharToMultiByte(CP_ACP,0,str,-1,res,ln,NULL,NULL);
+	WideCharToMultiByte(CP_UTF8,0,str,-1,res,ln,NULL,NULL);
 	return res;
 }
 
@@ -22,11 +22,11 @@ wchar_t* utf8_to_wchar(const char *str)
 	if (str==NULL)
 		return NULL;
 	//Determine required length
-	int ln=MultiByteToWideChar(CP_ACP,0,str,-1,NULL,0)/* | raise_w32_error()*/;
+	int ln=MultiByteToWideChar(CP_UTF8,0,str,-1,NULL,0)/* | raise_w32_error()*/;
 	wchar_t *res=(wchar_t *)malloc(sizeof(wchar_t)*ln);
 
 	//Convert to Unicode
-	MultiByteToWideChar(CP_ACP,0,str,-1,res,(int)(strlen(str)+1))/* | raise_w32_error()*/;
+	MultiByteToWideChar(CP_UTF8,0,str,-1,res,(int)(strlen(str)+1))/* | raise_w32_error()*/;
 	return res;
 }
 
@@ -34,13 +34,13 @@ void utf8_to_wchar_buf(const char *src, wchar_t *res, int maxlen)
 {
 	if (src==NULL || res==NULL || maxlen==0) return;
 
-	int ln=MultiByteToWideChar(CP_ACP,0,src,-1,NULL,0)/* | raise_w32_error()*/;
+	int ln=MultiByteToWideChar(CP_UTF8,0,src,-1,NULL,0)/* | raise_w32_error()*/;
 	if (ln>=maxlen)
 	{
 		*res=L'\0';
 		return;
 	}
-	MultiByteToWideChar(CP_ACP,0,src,-1,res,(int)(strlen(src)+1))/* | raise_w32_error()*/;
+	MultiByteToWideChar(CP_UTF8,0,src,-1,res,(int)(strlen(src)+1))/* | raise_w32_error()*/;
 }
 
 std::string wchar_to_utf8_cstr(const wchar_t *str)
