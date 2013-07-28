@@ -149,7 +149,7 @@ static int DOKAN_CALLBACK FuseGetFileInformation(
 {
 	impl_fuse_context *impl=the_impl;
 	if (impl->debug()) FWPRINTF(stderr, L"GetFileInfo : %s\n", FileName);
-
+	ZeroMemory(HandleFileInformation, sizeof(*HandleFileInformation));
 	return -errno_to_win32_error(impl->get_file_information(FileName, HandleFileInformation,DokanFileInfo));
 }
 
@@ -258,6 +258,9 @@ static int DOKAN_CALLBACK FuseGetVolumeInformation(
 {
 	impl_fuse_context *impl=the_impl;
 	if (impl->debug()) FWPRINTF(stderr, L"GetVolInfo\n");
+
+    if (FileSystemFlags) *FileSystemFlags = FILE_CASE_PRESERVED_NAMES;
+    if (MaximumComponentLength) *MaximumComponentLength = MAX_PATH;
 
 	return -errno_to_win32_error(impl->get_volume_information(VolumeNameBuffer,VolumeNameSize,
 		FileSystemNameBuffer,FileSystemNameSize, DokanFileInfo));

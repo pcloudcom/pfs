@@ -296,9 +296,10 @@ static binresult *do_cmd(const char *command, size_t cmdlen, const void *data, s
   binparam nparams[paramcnt+1];
   task mytask, *ptask;
   binresult *res;
-//  debug("Do-cmd enter %s\n", command);
+  debug("Do-cmd enter %s, %c\n", command, callback?'C':'D');
   pthread_mutex_init(&mymutex, NULL);
   pthread_cond_init(&mycond, NULL);
+
   if (callback){
     ptask=new(task);
     ptask->type=TASK_TYPE_CALL;
@@ -313,6 +314,7 @@ static binresult *do_cmd(const char *command, size_t cmdlen, const void *data, s
     pthread_mutex_lock(&mymutex);
   }
   pthread_mutex_lock(&taskslock);
+  debug("Do-cmd send %u\n", (uint32_t)taskid);
   ptask->taskid=taskid++;
   ptask->next=tasks;
   tasks=ptask;
@@ -329,30 +331,25 @@ static binresult *do_cmd(const char *command, size_t cmdlen, const void *data, s
     res=do_send_command(sock, command, cmdlen, nparams, paramcnt+1, -1, 0);
   if (res && datalen){
     if (writeall(sock, data, datalen)){
-      debug("writeall failed\n");
+      debug("do_cmd - writeall failed\n");
       res=NULL;
     }
   }
   pthread_mutex_unlock(&writelock);
-//  debug("Do-cmd exit %s\n", command);
-  if (callback){
-    if (!res)
-      callback(callbackptr, NULL);
-    goto free_data;
-  }
-  if (!res){
-    goto free_data;
+
+  if (!callback){
+   if (res){
+     debug("##### Do-cmd wait %s\n", command);
+     pthread_cond_wait(&mycond, &mymutex);
+     debug("##### Do-cmd got  %s\n", command);
+   }
+   pthread_mutex_unlock(&mymutex);
   }
 
-//  debug("Do-cmd wait %s\n", command);
-  pthread_cond_wait(&mycond, &mymutex);
-  pthread_mutex_unlock(&mymutex);
-//  debug("Do-cmd late exit %s\n", command);
   res = ptask->result;
-
-free_data:
   pthread_cond_destroy(&mycond);
   pthread_mutex_destroy(&mymutex);
+  debug("Do-cmd exit %s, %p\n", command, res);
   return res;
 }
 
@@ -364,15 +361,20 @@ static void cancel_all(){
     t=tasks;
     tasks=t->next;
     pthread_mutex_unlock(&taskslock);
+    debug("cancel_all - get task.\n");
     if (t->type==TASK_TYPE_WAIT){
       t->result=NULL;
+      debug("cancel_all - task TASK_TYPE_WAIT\n");
       pthread_mutex_lock(t->mutex);
       pthread_cond_signal(t->cond);
       pthread_mutex_unlock(t->mutex);
+      debug("cancel_all - task TASK_TYPE_WAIT signalled\n");
     }
     else if (t->type==TASK_TYPE_CALL){
+      debug("cancel_all - task TASK_TYPE_CALL - %p\n", t);
       t->call((void *)t->result, NULL);
       free(t);
+      debug("cancel all - task TASK_TYPE_CALL called\n");
     }
     pthread_mutex_lock(&taskslock);
   }
@@ -415,7 +417,7 @@ static void cancel_all_and_reconnect(){
         if (find_res(res, "result")->num!=0){
           debug("cancel_all_and_reconnect - problem on login\n");
           pthread_mutex_unlock(&writelock);
-          while (1){
+          while (1){ //?????
             cancel_all();
             sleep(1);
           }
@@ -442,10 +444,10 @@ static void *receive_thread(void *ptr){
     id=find_res(res, "id");
     if (!id || id->type!=PARAM_NUM){
       free(res);
-//      debug("receive_thread - no ID\n");
+      debug("receive_thread - no ID\n");
       continue;
     }
-//    debug("receive_thread received. \n");
+    debug("receive_thread received %u. \n", (uint32_t)id->num);
     pthread_mutex_lock(&taskslock);
     pt=&tasks;
     t=tasks;
@@ -460,7 +462,7 @@ static void *receive_thread(void *ptr){
     pthread_mutex_unlock(&taskslock);
     if (!t){
       free(res);
-//      debug("receive_thread - no task\n");
+      debug("receive_thread - no task\n");
       continue;
     }
     sub=find_res(res, "data");
@@ -483,7 +485,9 @@ static void *receive_thread(void *ptr){
       }
     }
     else if (t->type==TASK_TYPE_CALL){
+//      debug("receive thread calling task - %p\n", t);
       t->call((void *)t->result, res);
+//      debug("receive thread task called - %p\n", t);
       free(res);
       free(t);
     }
@@ -840,6 +844,7 @@ static void *diff_thread(void *ptr){
 //    debug("send diff\n");
     res=send_command(diffsock, "diff", P_NUM("diffid", diffid), P_BOOL("block", 1), P_STR("timeformat", "timestamp"));
     if (!res){
+      debug("diff thread - reconnecting\n");
       api_close(diffsock);
       do {
         if (usessl)
@@ -858,6 +863,7 @@ static void *diff_thread(void *ptr){
         continue;
       }
       free(res);
+      debug("diff thread - reconnected!\n");
       return NULL;
     }
     sub=find_res(res, "result");
@@ -961,10 +967,12 @@ static node *get_parent_folder(const char *path, const char **name){
 
 static int fs_getattr(const char *path, struct stat *stbuf){
   node *entry;
+  debug("fs_getattr, %s\n", path);
   memset(stbuf, 0, sizeof(struct stat));
   pthread_mutex_lock(&treelock);
   entry=get_node_by_path(path);
   if (!entry){
+    debug("no entry %s! \n", path);
     pthread_mutex_unlock(&treelock);
     return -ENOENT;
   }
@@ -999,6 +1007,7 @@ static int fs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
        off_t offset, struct fuse_file_info *fi){
   node *folder;
   int unsigned i;
+  debug ("fs_readdir %s\n", path);
   pthread_mutex_lock(&treelock);
   folder=get_node_by_path(path);
   if (!folder){
@@ -1025,7 +1034,7 @@ static int fs_statfs(const char *path, struct statvfs *stbuf){
   binresult *res;
   uint64_t q, uq;
   time_t tm;
-//  debug ("fs_statfs %s\n", path);
+  debug ("fs_statfs %s\n", path);
   pthread_mutex_lock(&treelock);
   entry=get_node_by_path(path);
   pthread_mutex_unlock(&treelock);
@@ -1080,7 +1089,7 @@ static int fs_creat(const char *path, mode_t mode, struct fuse_file_info *fi){
   const char *name;
   openfile *of;
   uint64_t folderid, fd, fileid;
-//  debug("create - %s \n", path);
+  debug("create - %s \n", path);
   pthread_mutex_lock(&treelock);
   entry=get_parent_folder(path, &name);
   if (!entry){
@@ -1095,13 +1104,14 @@ static int fs_creat(const char *path, mode_t mode, struct fuse_file_info *fi){
   }
   folderid=entry->tfolder.folderid;
   pthread_mutex_unlock(&treelock);
-//  debug("creating a file flags=%x\n", fi->flags);
+  debug("creating a file flags=%x\n", fi->flags);
   res=cmd("file_open", P_NUM("flags", fi->flags|0x0040), P_NUM("folderid", folderid), P_STR("name", name));
   if (!res){
     debug("create - not connected\n");
-    return NOT_CONNECTED_ERR;
+    return -EIO;
   }
   sub=find_res(res, "result");
+  debug("file created!\n");
   if (!sub || sub->type!=PARAM_NUM){
     free(res);
     debug("create - failed to create %s\n", path);
@@ -1117,6 +1127,7 @@ static int fs_creat(const char *path, mode_t mode, struct fuse_file_info *fi){
   fileid=find_res(res, "fileid")->num;
   free(res);
   pthread_mutex_lock(&treelock);
+  debug("waiting for notification...\n");
   while (1){
     entry=get_file_by_id(fileid);
     if (entry){
@@ -1133,9 +1144,9 @@ static int fs_creat(const char *path, mode_t mode, struct fuse_file_info *fi){
   of=new_file();
   of->fd=fd;
   of->file=entry;
-//  debug("fs_creat - file ID %u\n", (uint32_t)of->file->tfile.fileid);
+  debug("fs_creat - file %s file - %p\n", path, of);
   fi->fh=(uintptr_t)of;
-//  debug("create - out OK\n");
+  debug("create - out OK\n");
   return 0;
 }
 
@@ -1197,6 +1208,10 @@ cacheentry *get_pages(unsigned numpages){
 }
 
 static void dec_openfile_refcnt_locked(openfile *of){
+  if (!of->refcnt){
+    debug("dec_openfile_refcnt_locked - no ref!!! \n");
+    return;
+  }
   if (--of->refcnt==0 && of->waitref)
     pthread_cond_broadcast(&of->cond);
 }
@@ -1220,22 +1235,22 @@ static void schedule_readahead_finished(void *_pf, binresult *res){
   page=pf->page;
   of=pf->of;
   free(_pf);
-//  debug("schedule_readahead_finished in\n");
+  debug("schedule_readahead_finished in\n");
   if (!res){
-//    debug("schedule_readahead_finished no res!\n");
+    debug("schedule_readahead_finished no res!\n");
     goto err;
   }
   rs=find_res(res, "result");
   if (!rs || rs->type!=PARAM_NUM || rs->num){
-//    debug("schedule_readahead_finished bad rs!\n");
+    debug("schedule_readahead_finished bad rs!\n");
     goto err;
   }
   pagedata=cachepages+page->pageid*cachehead->pagesize;
   len=find_res(res, "data")->num;
 
-//  debug("schedule_readahead_finished request 0x%08x!\n", (int)len);
+  debug("schedule_readahead_finished request 0x%08x!\n", (int)len);
   ret=readall(sock, pagedata, len);
-//  debug("schedule_readahead_finished read %d!\n", (int)ret);
+  debug("schedule_readahead_finished read %d!\n", (int)ret);
   if (ret==-1)
     goto err;
   page->realsize=ret;
@@ -1255,7 +1270,7 @@ static void schedule_readahead_finished(void *_pf, binresult *res){
   }
   pthread_mutex_unlock(&pageslock);
   dec_openfile_refcnt(of);
-//  debug("schedule_readahead_finished out OK\n");
+  debug("schedule_readahead_finished out OK\n");
   return;
 err:
   debug("schedule_readahead_finished failed! NC error\n");
@@ -1269,8 +1284,8 @@ err:
     pthread_cond_broadcast(&page->cond);
   }
   pthread_mutex_unlock(&pageslock);
-  dec_openfile_refcnt(of);
-//  debug("schedule_readahead_finished out Err\n");
+  if (res) dec_openfile_refcnt(of);
+  debug("schedule_readahead_finished out Err\n");
 }
 
 static int schedule_readahead(openfile *of, off_t offset, size_t length, size_t lock_length){
@@ -1280,9 +1295,9 @@ static int schedule_readahead(openfile *of, off_t offset, size_t length, size_t 
   int unsigned numpages, lockpages, needpages, i;
   char dontneed[readaheadmax/cachehead->pagesize];
   int ret;
-//  debug("schedule_readahead offset %lu, len %u\n", offset, (uint32_t)length);
+  debug("schedule_readahead offset %lu, len %u\n", offset, (uint32_t)length);
   if (offset>of->file->tfile.size){
-//    debug("schedule_readahead - invalid offset\n");
+    debug("schedule_readahead - invalid offset\n");
     return 0;
   }
   length+=offset%cachehead->pagesize;
@@ -1317,7 +1332,7 @@ static int schedule_readahead(openfile *of, off_t offset, size_t length, size_t 
       needpages++;
   if (!needpages){
     pthread_mutex_unlock(&pageslock);
-//    debug ("schedule_readahead out - 0\n");
+    debug ("schedule_readahead out - 0\n");
     return 0;
   }
   pages=get_pages(needpages);
@@ -1350,7 +1365,7 @@ static int schedule_readahead(openfile *of, off_t offset, size_t length, size_t 
     fd_magick_stop();
     ce=ce->next;
   }
-//  debug ("schedule_readahead out : %d\n", ret);
+  debug ("schedule_readahead out : %d\n", ret);
   return ret;
 }
 
@@ -1359,6 +1374,7 @@ static void fs_open_finished(void *_of, binresult *res){
   binresult *sub;
   of=(openfile *)_of;
   sub=find_res(res, "result");
+  if (!res) return;
   pthread_mutex_lock(&of->mutex);
   if (!sub || sub->type!=PARAM_NUM){
     debug("fs_open_finished - EIO\n");
@@ -1382,6 +1398,7 @@ static void fs_open_finished(void *_of, binresult *res){
 static int fs_open(const char *path, struct fuse_file_info *fi){
   node *entry;
   openfile *of;
+  debug("fs_open %s\n", path);
   pthread_mutex_lock(&treelock);
   entry=get_node_by_path(path);
   if (!entry){
@@ -1401,7 +1418,7 @@ static int fs_open(const char *path, struct fuse_file_info *fi){
   of->file=entry;
   // no need to lock of->mutex as nobody has a pointer to of for now
   of->refcnt++;
-//  debug("fs_open - file ID %u\n", (uint32_t)of->file->tfile.fileid);
+  debug("fs_open - file path %s, file %p, flags %x\n", path, of, fi->flags);
   fi->fh=(uintptr_t)of;
   pthread_mutex_lock(&indexlock);
   of->openidx=filesopened++;
@@ -1416,13 +1433,17 @@ static int fs_open(const char *path, struct fuse_file_info *fi){
 static void fs_release_finished(void *_of, binresult *res){
   openfile *of;
   of=(openfile *)_of;
+  debug("fs_release_finished %p, %p! \n", _of, res);
   if (of->file)
     dec_refcnt(of->file);
   pthread_mutex_lock(&of->mutex);
+  if (!res) debug("fs_release_finished - lock mutex\n");
   of->waitref=1;
-  while (of->refcnt)
+  if (!res) debug("fs_release_finished - waiting condition %u\n", of->refcnt);
+  while (res && of->refcnt)
     pthread_cond_wait(&of->cond, &of->mutex);
   pthread_mutex_unlock(&of->mutex);
+  if (!res) debug("fs_release_finished - destroy mutex\n");
   pthread_cond_destroy(&of->cond);
   pthread_mutex_destroy(&of->mutex);
   free(of);
@@ -1430,6 +1451,7 @@ static void fs_release_finished(void *_of, binresult *res){
 
 static int fs_release(const char *path, struct fuse_file_info *fi){
   openfile *of;
+  debug("fs_release %s\n", path);
   of=(openfile *)((uintptr_t)fi->fh);
   fd_magick_start(of);
   cmd_callback("file_close", fs_release_finished, of, fdparam);
@@ -1499,6 +1521,7 @@ static void check_old_data_finished(void *_pf, binresult *res){
   dec_openfile_refcnt(of);
   return;
 err:
+  debug("check_old_data_finished error (null)\n");
   of->error=NOT_CONNECTED_ERR;
   pthread_mutex_lock(&pageslock);
   list_del(page);
@@ -1572,7 +1595,7 @@ static int fs_read(const char *path, char *buf, size_t size, off_t offset,
    * boundaries, so generally no harm.
    */
 
-//  debug ("fs_read %s, off: %lu, size: %u\n", path, offset, (uint32_t)size);
+  debug ("fs_read %s, off: %lu, size: %u\n", path, offset, (uint32_t)size);
 
   readahead=0;
   frompageoff=offset/cachehead->pagesize;
@@ -1738,7 +1761,7 @@ static void fs_write_finished(void *_of, binresult *res){
   of=(openfile *)_of;
   pthread_mutex_lock(&of->mutex);
   if (!res){
-    debug("fs_write_finished - error\n");
+    debug("fs_write_finished - error - %u\n", of->waitcmd);
     of->error=NOT_CONNECTED_ERR;
     if (of->waitcmd)
       pthread_cond_broadcast(&of->cond);
@@ -1775,7 +1798,7 @@ static int fs_write(const char *path, const char *buf, size_t size, off_t offset
   uint32_t frompageoff, topageoff;
   of=(openfile *)((uintptr_t)fi->fh);
 
-//  debug ("fs_write %s\n", path);
+  debug ("fs_write %s\n", path);
 
   pthread_mutex_lock(&of->mutex);
   if (of->error){
@@ -1803,6 +1826,7 @@ static int fs_write(const char *path, const char *buf, size_t size, off_t offset
   pthread_mutex_unlock(&pageslock);
   if (offset+size>of->file->tfile.size)
     of->file->tfile.size=offset+size;
+  debug ("fs_write - %lu bytes\n", (long unsigned)size);
   return size;
 }
 
@@ -1810,6 +1834,7 @@ static void fs_ftruncate_finished(void *_of, binresult *res){
   openfile *of;
   binresult *sub;
   of=(openfile *)_of;
+  debug("fs_ftruncate_finished - %p\n", _of);
   pthread_mutex_lock(&of->mutex);
   if (!res){
     debug("fs_ftruncate_finished error\n");
@@ -1844,10 +1869,11 @@ static int fs_ftruncate(const char *path, off_t size, struct fuse_file_info *fi)
   binresult *res;
   of=(openfile *)((uintptr_t)fi->fh);
 
-//  debug ("fs_ftruncate\n");
+  debug ("fs_ftruncate %s -> %lu\n", path, size);
 
   pthread_mutex_lock(&of->mutex);
   if (of->error){
+    debug("fs_ftruncate error on file.\n");
     pthread_mutex_unlock(&of->mutex);
     return of->error;
   }
@@ -1861,11 +1887,14 @@ static int fs_ftruncate(const char *path, off_t size, struct fuse_file_info *fi)
     of->file->tfile.size=size;
     return 0;
   }
-  else
+  else{
+    debug("fs_ftruncate error error.\n");
     return -EIO;
+  }
 }
 
 static int of_sync(openfile *of){
+  debug("fs_sync %p -> %d\n", of, (int)of->error);
   pthread_mutex_lock(&of->mutex);
   if (of->error || !of->unackcomd){
     pthread_mutex_unlock(&of->mutex);
@@ -1892,7 +1921,7 @@ static int fs_truncate(const char *path, off_t size){
   node *entry;
   uint64_t fileid;
 
-//  debug ("fs_truncate\n");
+  debug ("fs_truncate %s\n", path);
 
   pthread_mutex_lock(&treelock);
   entry=get_node_by_path(path);
@@ -1920,6 +1949,7 @@ static int fs_mkdir(const char *path, mode_t mode){
   binresult *res, *sub;
   const char *name;
   uint64_t folderid;
+  debug("fs_mkdir %s\n", path);
   pthread_mutex_lock(&treelock);
   entry=get_parent_folder(path, &name);
   if (!entry){
@@ -1966,6 +1996,7 @@ static int fs_rmdir(const char *path){
   node *entry;
   binresult *res, *sub;
   uint64_t folderid;
+  debug("fs_rmdir %s\n", path);
   pthread_mutex_lock(&treelock);
   entry=get_node_by_path(path);
   if (!entry){
@@ -2000,7 +2031,7 @@ static int fs_unlink(const char *path){
   binresult *res, *sub;
   uint64_t fileid;
 
-//  debug ("fs_unlink %s\n", path);
+  debug ("fs_unlink %s\n", path);
 
   pthread_mutex_lock(&treelock);
   entry=get_node_by_path(path);
@@ -2024,6 +2055,7 @@ static int fs_unlink(const char *path){
   }
   if (sub->num!=0){
     int err=convert_error(sub->num);
+    debug("Failed to delete file %s - server returned: %d, err: %d\n", path, (int)sub->num, err);
     free(res);
     return err;
   }
@@ -2189,18 +2221,9 @@ void *fs_init(struct fuse_conn_info *conn){
   pthread_mutexattr_settype(&mattr, PTHREAD_MUTEX_RECURSIVE);
   pthread_mutex_init(&pageslock, &mattr);
 
-  pthread_mutexattr_init(&mattr);
-  pthread_mutexattr_settype(&mattr, PTHREAD_MUTEX_RECURSIVE);
-  pthread_mutex_init(&taskslock, &mattr);
-
-  pthread_mutexattr_init(&mattr);
-  pthread_mutexattr_settype(&mattr, PTHREAD_MUTEX_RECURSIVE);
-  pthread_mutex_init(&writelock, &mattr);
-
-  pthread_mutexattr_init(&mattr);
-  pthread_mutexattr_settype(&mattr, PTHREAD_MUTEX_RECURSIVE);
-  pthread_mutex_init(&indexlock, &mattr);
-
+  pthread_mutex_init(&taskslock, NULL);
+  pthread_mutex_init(&writelock, NULL);
+  pthread_mutex_init(&indexlock, NULL);
   pthread_mutex_init(&datamutex, NULL);
   pthread_cond_init(&datacond, NULL);
 
