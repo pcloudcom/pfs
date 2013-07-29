@@ -74,6 +74,7 @@ void CPCloudDlg::restartService()
             Sleep(1000);
             --retry;
         }
+        if (!retry)MessageBox(L"Failed to stop the service. Try again...");
 
         if (StartService(schService, 0, NULL))
         {
@@ -86,6 +87,10 @@ void CPCloudDlg::restartService()
                     Sleep(1000);
                 else break;
             }
+            if (!retry)
+                MessageBox(L"Failed to start the service. Try again...");
+            else
+                MessageBox(L"Service started. Enjoy!");
         }
         Sleep(1000);
         char val[32] = {0,};
