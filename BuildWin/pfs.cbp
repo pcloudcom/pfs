@@ -13,7 +13,7 @@
 				<Option type="1" />
 				<Option compiler="gcc" />
 				<Option use_console_runner="0" />
-				<Option parameters="m: -d" />
+				<Option parameters="-u peshe -p Aldebaram m: -d -c 512" />
 				<Compiler>
 					<Add option="-Wall" />
 					<Add option="-g" />
