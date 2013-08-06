@@ -1,6 +1,6 @@
 #!/bin/bash
 
 
-cmd="cc -D_FILE_OFFSET_BITS=64 -DFUSE_USE_VERSION=26 -Iinclude -I/usr/local/include/osxfuse/fuse -Wall -Wno-deprecated-declarations -O2 -o mount.pfs pfs.c lib/binapi.c -losxfuse -lssl -lpthread -lcrypto"
+cmd="cc -D_FILE_OFFSET_BITS=64 -DFUSE_USE_VERSION=26 -Iinclude -I/usr/local/include/osxfuse/fuse -Wall -Wno-deprecated-declarations -O2 -o mount.pfs pfs.c settings.c lib/binapi.c -losxfuse -lssl -lpthread -lcrypto"
 echo $cmd
 $cmd

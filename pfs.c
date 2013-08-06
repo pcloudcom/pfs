@@ -9,14 +9,16 @@
 #include <fuse.h>
 #include <errno.h>
 #include <openssl/md5.h>
+#include "common.h"
+#include "settings.h"
+
+#define SETTING_BUFF 4096
 
 #if !defined(MINGW) && !defined(_WIN32)
 #  include <sys/mman.h>
 #endif
 
 #include "binapi.h"
-
-#define FS_BLOCK_SIZE 4096
 
 #if defined(MINGW) || defined(_WIN32)
 
@@ -34,10 +36,13 @@
 
 #endif
 
+pfs_settings fs_settings={
+  .pagesize=64*1024
+};
+
 static size_t readaheadmin=64*1024;
 static size_t readaheadmax=8*1024*1024;
 static size_t readaheadmaxsec=12;
-static size_t pagesize=64*1024;
 
 #if defined(MINGW) || defined(_WIN32)
 static size_t cachesize=1024*1024*1024;
@@ -63,8 +68,8 @@ static char *auth="OcRE1WxMyzzZnZ0e96nIT5TIbed5RrDbNshpjWheN7";
 
 static int usessl=0;
 
-static uid_t myuid=0;
-static gid_t mygid=0;
+uid_t myuid=0;
+gid_t mygid=0;
 
 static int fs_inited = 0;
 
@@ -81,8 +86,8 @@ static int fs_inited = 0;
 
 #define NOT_CONNECTED_ERR -ENOTCONN
 
-#define list_add(list, elem) do {elem->next=list; elem->prev=&list; list=elem; if (elem->next) elem->next->prev=&elem->next;} while (0)
-#define list_del(elem) do {*elem->prev=elem->next; if (elem->next) elem->next->prev=elem->prev;} while (0)
+#define list_add(list, elem) do {(elem)->next=(list); (elem)->prev=&(list); (list)=(elem); if ((elem)->next) (elem)->next->prev=&(elem)->next;} while (0)
+#define list_del(elem) do {*(elem)->prev=(elem)->next; if ((elem)->next) (elem)->next->prev=(elem)->prev;} while (0)
 #define new(type) (type *)malloc(sizeof(type))
 
 #define debug(...) do {FILE *d=fopen("/tmp/pfsfs.txt", "a"); if(!d)break; fprintf(d, __VA_ARGS__); fclose(d);} while (0)
@@ -192,12 +197,17 @@ typedef struct _openfile{
   int error;
   int waitref;
   int waitcmd;
+  char issetting;
 } openfile;
+
+#define ismodified bytesthissec
+#define currentsize laststreamid
 
 typedef struct {
   size_t pagesize;
   size_t cachesize;
   size_t numpages;
+  size_t headersize;
 } cacheheader;
 
 typedef struct _cacheentry{
@@ -968,6 +978,14 @@ static node *get_parent_folder(const char *path, const char **name){
 static int fs_getattr(const char *path, struct stat *stbuf){
   node *entry;
   debug("fs_getattr, %s\n", path);
+  if (!strncmp(path, SETTINGS_PATH, strlen(SETTINGS_PATH))){
+    const struct stat *st;
+    st=get_setting_stat(path+strlen(SETTINGS_PATH));
+    if (!st)
+      return -ENOENT;
+    memcpy(stbuf, st, sizeof(struct stat));
+    return 0;
+  }
   memset(stbuf, 0, sizeof(struct stat));
   pthread_mutex_lock(&treelock);
   entry=get_node_by_path(path);
@@ -994,12 +1012,12 @@ static int fs_getattr(const char *path, struct stat *stbuf){
     stbuf->st_blocks=(entry->tfile.size+511)/512;
 #endif
   }
+  pthread_mutex_unlock(&treelock);
 #if !defined(MINGW) && !defined(_WIN32)
   stbuf->st_blksize=FS_BLOCK_SIZE;
 #endif
   stbuf->st_uid=myuid;
   stbuf->st_gid=mygid;
-  pthread_mutex_unlock(&treelock);
   return 0;
 }
 
@@ -1008,6 +1026,14 @@ static int fs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
   node *folder;
   int unsigned i;
   debug ("fs_readdir %s\n", path);
+  if (!strcmp(path, SETTINGS_PATH)){
+    const char **settings=list_settings();
+    filler(buf, ".", NULL, 0);
+    filler(buf, "..", NULL, 0);
+    while (*settings)
+      filler(buf, *settings++, NULL, 0);
+    return 0;
+  }
   pthread_mutex_lock(&treelock);
   folder=get_node_by_path(path);
   if (!folder){
@@ -1022,9 +1048,8 @@ static int fs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
   }
   filler(buf, ".", NULL, 0);
   filler(buf, "..", NULL, 0);
-  for (i=0; i<folder->tfolder.nodecnt; i++){
+  for (i=0; i<folder->tfolder.nodecnt; i++)
     filler(buf, folder->tfolder.nodes[i]->name, NULL, 0);
-  }
   pthread_mutex_unlock(&treelock);
   return 0;
 }
@@ -1395,10 +1420,30 @@ static void fs_open_finished(void *_of, binresult *res){
   pthread_mutex_unlock(&of->mutex);
 }
 
+static int open_setting(const char *name, struct fuse_file_info *fi){
+  openfile *of;
+  size_t sz;
+  int ret;
+  of=(openfile *)malloc(sizeof(openfile)+SETTING_BUFF);
+  memset(of, 0, sizeof(openfile)+SETTING_BUFF);
+  sz=SETTING_BUFF;
+  ret=get_setting(name, (char *)(of+1), &sz);
+  if (ret){
+    free(of);
+    return ret;
+  }
+  of->currentsize=sz;
+  of->issetting=1;
+  fi->fh=(uintptr_t)of;
+  return 0;
+}
+
 static int fs_open(const char *path, struct fuse_file_info *fi){
   node *entry;
   openfile *of;
   debug("fs_open %s\n", path);
+  if (!strncmp(path, SETTINGS_PATH "/", strlen(SETTINGS_PATH)+1))
+    return open_setting(path+strlen(SETTINGS_PATH)+1, fi);
   pthread_mutex_lock(&treelock);
   entry=get_node_by_path(path);
   if (!entry){
@@ -1453,6 +1498,10 @@ static int fs_release(const char *path, struct fuse_file_info *fi){
   openfile *of;
   debug("fs_release %s\n", path);
   of=(openfile *)((uintptr_t)fi->fh);
+  if (of->issetting){
+    free(of);
+    return 0;
+  }
   fd_magick_start(of);
   cmd_callback("file_close", fs_release_finished, of, fdparam);
   fd_magick_stop();
@@ -1581,6 +1630,15 @@ err:
 //  debug("check_old_data - out\n");
 }
 
+static int fs_read_setting(openfile *of, char *buf, size_t size, off_t offset){
+  if (offset>=of->currentsize)
+    return 0;
+  if (offset+size>of->currentsize)
+    size=of->currentsize-offset;
+  memcpy(buf, ((char *)(of+1))+offset, size);
+  return size;
+}
+
 static int fs_read(const char *path, char *buf, size_t size, off_t offset,
                     struct fuse_file_info *fi){
   cacheentry *ce;
@@ -1594,6 +1652,9 @@ static int fs_read(const char *path, char *buf, size_t size, off_t offset,
    * executing in parralel. On the other hand, corrupted streams table will only lead to miscalculated readahed, but still winthin
    * boundaries, so generally no harm.
    */
+  
+  if (of->issetting)
+    return fs_read_setting(of, buf, size, offset);
 
   debug ("fs_read %s, off: %lu, size: %u\n", path, offset, (uint32_t)size);
 
@@ -1791,14 +1852,28 @@ decref:
   pthread_mutex_unlock(&of->mutex);
 }
 
+static int fs_write_setting(openfile *of, const char *buf, size_t size, off_t offset){
+  if (offset>=SETTING_BUFF)
+    return 0;
+  if (offset+size>SETTING_BUFF)
+    size=SETTING_BUFF-offset;
+  if (offset+size>of->currentsize)
+    of->currentsize=offset+size;
+  of->ismodified=1;
+  memcpy(((char *)(of+1))+offset, buf, size);
+  return size;
+}
+
 static int fs_write(const char *path, const char *buf, size_t size, off_t offset,
                       struct fuse_file_info *fi){
   cacheentry *ce;
   openfile *of;
   uint32_t frompageoff, topageoff;
   of=(openfile *)((uintptr_t)fi->fh);
-
   debug ("fs_write %s\n", path);
+  
+  if (of->issetting)
+    return fs_write_setting(of, buf, size, offset);
 
   pthread_mutex_lock(&of->mutex);
   if (of->error){
@@ -1868,6 +1943,11 @@ static int fs_ftruncate(const char *path, off_t size, struct fuse_file_info *fi)
   openfile *of;
   binresult *res;
   of=(openfile *)((uintptr_t)fi->fh);
+  if (of->issetting){
+    of->currentsize=0;
+    of->ismodified=1;
+    return 0;
+  }
 
   debug ("fs_ftruncate %s -> %lu\n", path, size);
 
@@ -1893,8 +1973,16 @@ static int fs_ftruncate(const char *path, off_t size, struct fuse_file_info *fi)
   }
 }
 
-static int of_sync(openfile *of){
+static int of_sync(openfile *of, const char *path){
   debug("fs_sync %p -> %d\n", of, (int)of->error);
+  if (of->issetting){
+    if (of->ismodified){
+      ((char *)(of+1))[of->currentsize]=0;
+      return set_setting(path+strlen(SETTINGS_PATH)+1, (char *)(of+1), of->currentsize);
+    }
+    else
+      return 0;
+  }
   pthread_mutex_lock(&of->mutex);
   if (of->error || !of->unackcomd){
     pthread_mutex_unlock(&of->mutex);
@@ -1910,11 +1998,11 @@ static int of_sync(openfile *of){
 }
 
 static int fs_flush(const char *path, struct fuse_file_info *fi){
-  return of_sync((openfile *)((uintptr_t)fi->fh));
+  return of_sync((openfile *)((uintptr_t)fi->fh), path);
 }
 
 static int fs_fsync(const char *path, int datasync, struct fuse_file_info *fi){
-  return of_sync((openfile *)((uintptr_t)fi->fh));
+  return of_sync((openfile *)((uintptr_t)fi->fh), path);
 }
 
 static int fs_truncate(const char *path, off_t size){
@@ -2177,7 +2265,7 @@ static void init_cache(){
     size_t numpages, headersize;
     ssize_t i;
     cacheentry *entry;
-    numpages=cachesize/pagesize;
+    numpages=cachesize/fs_settings.pagesize;
     headersize=((sizeof(cacheheader)+sizeof(cacheentry)*numpages+4095)/4096)*4096;
 #if defined(MAP_ANONYMOUS)
     cachehead=(cacheheader *)mmap(NULL, cachesize+headersize, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
@@ -2190,8 +2278,9 @@ static void init_cache(){
     cachepages=((char *)cachehead)+headersize;
     cacheentries=(cacheentry *)(cachehead+1);
     cachehead->cachesize=cachesize;
-    cachehead->pagesize=pagesize;
+    cachehead->pagesize=fs_settings.pagesize;
     cachehead->numpages=numpages;
+    cachehead->headersize=headersize;
     for (i=numpages-1; i>=0; i--){
       entry=cacheentries+i;
       entry->pageid=i;
@@ -2200,6 +2289,25 @@ static void init_cache(){
       list_add(freecache, entry);
     }
   }
+}
+
+void reset_cache(){
+  size_t i;
+  cancel_all();
+  pthread_mutex_lock(&pageslock);
+  for (i=0; i<cachehead->numpages; i++)
+    list_del(&cacheentries[i]);
+#if defined(MAP_ANONYMOUS) || defined(MAP_ANON)
+  munmap(cachehead, cachehead->cachesize+cachehead->headersize);
+#else
+  free(cachehead);
+#endif
+  if (cachefile)
+    unlink(cachefile);
+  freecache=NULL;
+  init_cache();
+  pthread_mutex_unlock(&pageslock);
+  cancel_all();
 }
 
 void *fs_init(struct fuse_conn_info *conn){
@@ -2232,8 +2340,15 @@ void *fs_init(struct fuse_conn_info *conn){
   pthread_mutex_init(&treelock, &mattr);
   pthread_cond_init(&treecond, NULL);
 
-#if defined(FUSE_CAP_ASYNC_READ) && defined(FUSE_CAP_ATOMIC_O_TRUNC) && defined(FUSE_CAP_BIG_WRITES)
-  conn->want=FUSE_CAP_ASYNC_READ|FUSE_CAP_ATOMIC_O_TRUNC|FUSE_CAP_BIG_WRITES;
+  conn->want=0;
+#if defined(FUSE_CAP_ASYNC_READ)
+  conn->want|=FUSE_CAP_ASYNC_READ;
+#endif
+#if defined(FUSE_CAP_ATOMIC_O_TRUNC)
+  conn->want|=FUSE_CAP_ATOMIC_O_TRUNC;
+#endif
+#if defined(FUSE_CAP_BIG_WRITES)
+  conn->want|=FUSE_CAP_BIG_WRITES;
 #endif
 /* FUSE's readahead is not good enough, as it uses our read function, which requires roundtrip to the server, on the other
  * hand our readahead implementation is purely async, it just schedules the reads.

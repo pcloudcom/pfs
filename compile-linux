@@ -3,7 +3,9 @@
 
 cmd="gcc -Wall -O2 -g -Iinclude $1 -march=native -c lib/binapi.c"
 echo $cmd
+cmd="gcc -Wall -O2 -g -Iinclude $1 -march=native `pkg-config fuse --cflags` -c settings.c"
+echo $cmd
 $cmd
-cmd="gcc -Wall -O2 -g -Iinclude $1 -march=native pfs.c `pkg-config fuse --cflags --libs` binapi.o -lssl -lpthread -lcrypto -o mount.pfs"
+cmd="gcc -Wall -O2 -g -Iinclude $1 -march=native pfs.c `pkg-config fuse --cflags --libs` binapi.o settings.o -lssl -lpthread -lcrypto -o mount.pfs"
 echo $cmd
 $cmd
