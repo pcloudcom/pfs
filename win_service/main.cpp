@@ -5,6 +5,8 @@
 
 #include "pfs.h"
 
+extern "C" int pfs_main(int argc, char **argv, const pfs_params* params);
+
 #define SZSERVICENAME          L"pfs"
 #define SZSERVICEDISPLAYNAME   L"PCloud File System"
 #define DOKAN_DLL              L"dokan.dll"
@@ -101,9 +103,10 @@ char mountPoint[3] = "a:";
 
 DWORD WINAPI ThreadProc(LPVOID lpParam)
 {
+    pfs_params params;
     char username[MAX_PATH]="";
     char password[MAX_PATH]="";
-    char* params[2] = {(char *)"pfs", mountPoint};
+    char* argv[2] = {(char *)"pfs", mountPoint};
 
     storeKey("lr", "");
 
@@ -113,7 +116,13 @@ DWORD WINAPI ThreadProc(LPVOID lpParam)
     getDataFromRegistry(KEY_PASS, password);
     debug("pass:%s\n", password);
 
-    int res = pfs_main(2, params, username, password);
+    params.auth = NULL;
+    params.cache_size = 512*1024*1024;
+    params.username = username;
+    params.pass = password;
+    params.use_ssl = 0;
+
+    int res = pfs_main(2, argv, &params);
     if (res == ENOTCONN)
     {
         storeKey("lr", "1");

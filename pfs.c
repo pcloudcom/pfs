@@ -19,6 +19,7 @@
 #endif
 
 #include "binapi.h"
+#include "pfs.h"
 
 #if defined(MINGW) || defined(_WIN32)
 
@@ -89,8 +90,6 @@ static int fs_inited = 0;
 #define list_add(list, elem) do {(elem)->next=(list); (elem)->prev=&(list); (list)=(elem); if ((elem)->next) (elem)->next->prev=&(elem)->next;} while (0)
 #define list_del(elem) do {*(elem)->prev=(elem)->next; if ((elem)->next) (elem)->next->prev=(elem)->prev;} while (0)
 #define new(type) (type *)malloc(sizeof(type))
-
-#define debug(...) do {FILE *d=fopen("/tmp/pfsfs.txt", "a"); if(!d)break; fprintf(d, __VA_ARGS__); fclose(d);} while (0)
 
 #define md5_debug(_str, _len) ({unsigned char __md5b[16]; char *__ret, *__ptr; int __i; MD5((unsigned char *)(_str), (_len), __md5b); __ret=malloc(34);\
                       __ptr=__ret; for (__i=0; __i<16; __i++){*__ptr++=hexdigits[__md5b[__i]/16];*__ptr++=hexdigits[__md5b[__i]%16];}\
@@ -2408,16 +2407,15 @@ static int get_auth(const char* username, const char* pass)
   return 1;
 }
 
-int pfs_main(int argc, char **argv, const char* username, const char* password){
+int pfs_main(int argc, char **argv, const pfs_params* params){
   int r = 0;
   binresult *res, *subres;
 
   debug ("starting - argc: %d\n", argc);
   for (r = 0; r < argc; ++r)
     debug("\t %s \n", argv[r]);
-  if (username && password)
-    debug("username %s, password %s\n", username, password);
-
+  if (params->username && params->pass)
+    debug("username %s, password %s\n", params->username, params->pass);
 
   if (usessl){
     sock=api_connect_ssl();
@@ -2432,9 +2430,11 @@ int pfs_main(int argc, char **argv, const char* username, const char* password){
     return ENOTCONN;
   }
 
-  if (username && password){
+  if (params->username && params->pass){
 //    debug("try to get auth\n");
-    get_auth(username, password);
+    get_auth(params->username, params->pass);
+  }else if(params->auth){
+    auth = (char*)params->auth;
   }
 
   res=send_command(sock, "userinfo", P_STR("auth", auth));
@@ -2479,12 +2479,58 @@ int pfs_main(int argc, char **argv, const char* username, const char* password){
   return r;
 }
 
+static int parse_pfs_param(int * i, int argc, char ** argv, pfs_params* params){
+  if ((!strcmp(argv[*i], "-u") || !strcmp(argv[*i], "--user")) && *i+1 < argc) {
+    ++*i;
+    params->username = argv[*i];
+    ++*i;
+    return 1;
+  }
+  if ((!strcmp(argv[*i], "-p") || !strcmp(argv[*i], "--password")) && *i+1 < argc) {
+    ++*i;
+    params->pass = argv[*i];
+    ++*i;
+    return 1;
+  }
+  if ((!strcmp(argv[*i], "-a") || !strcmp(argv[*i], "--auth")) && *i+1 < argc){
+    ++*i;
+    params->auth = argv[*i];
+    ++*i;
+    return 1;
+  }
+  if (!strcmp(argv[*i], "-s") || !strcmp(argv[*i], "--ssl")){
+    ++*i;
+    params->use_ssl = 1;
+    return 1;
+  }
+  if ((!strcmp(argv[*i], "-c") || !strcmp(argv[*i], "--cache")) && *i+1<argc){
+    ++*i;
+    params->cache_size=atoi(argv[*i])*1024*1024;
+    ++*i;
+    return 1;
+  }
+  return 0;
+}
+
+static int parse_args(int argc, char** argv, char ** parsed_argv, pfs_params * params){
+  int i = 0;
+  int param_cnt = 0;
+
+  while (i < argc){
+    if (!parse_pfs_param(&i, argc, argv, params)){
+      parsed_argv[param_cnt++] = argv[i++];
+    }
+  }
+  return param_cnt;
+}
+
 #ifndef SERVICE
 int main(int argc, char **argv){
-#if !defined(MINGW) && !defined(_WIN32)
-    return pfs_main(argc, argv, NULL, NULL);
-#else
-    return pfs_main(argc, argv, "peshe@abv.bg", "Aldebaram");
-#endif
+  pfs_params params;
+  int parsed_argc;
+  char* parsed_argv[argc];
+  memset(&params, 0, sizeof(params));
+  parsed_argc = parse_args(argc, argv, parsed_argv, &params);
+  return pfs_main(parsed_argc, parsed_argv, &params);
 }
 #endif
