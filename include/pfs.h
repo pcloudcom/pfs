@@ -13,6 +13,7 @@ typedef struct
     const char * pass;
     int use_ssl;
     size_t cache_size;
+    size_t page_size;
 }pfs_params;
 
 #endif // PHS_H_INCLUDED

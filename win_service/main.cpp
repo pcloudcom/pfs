@@ -16,6 +16,8 @@ extern "C" int pfs_main(int argc, char **argv, const pfs_params* params);
 #define KEY_USER               "username"
 #define KEY_PASS               "pass"
 #define KEY_AUTH               "auth"
+#define KEY_CACHE_SIZE         "cachesize"
+#define KEY_USE_SSL            "ssl"
 #define KEY_DELETE             "del"
 
 #ifndef ENOTCONN
@@ -106,6 +108,8 @@ DWORD WINAPI ThreadProc(LPVOID lpParam)
     pfs_params params;
     char username[MAX_PATH]="";
     char password[MAX_PATH]="";
+    char buff[MAX_PATH] = "";
+    size_t cachesize;
     char* argv[2] = {(char *)"pfs", mountPoint};
 
     storeKey("lr", "");
@@ -115,9 +119,16 @@ DWORD WINAPI ThreadProc(LPVOID lpParam)
     debug("user:%s\n", username);
     getDataFromRegistry(KEY_PASS, password);
     debug("pass:%s\n", password);
+    getDataFromRegistry(KEY_CACHE_SIZE, buff);
+    cachesize = (size_t)atol(buff);
+    debug("cache size:%u\n", cachesize);
+    getDataFromRegistry(KEY_USE_SSL, buff);
+    debug("use SSL :%s\n", buff);
+    if (!strcmp(buff, "ssl") || !strcmp(buff, "SSL"))
+        params.use_ssl = 1;
 
     params.auth = NULL;
-    params.cache_size = 512*1024*1024;
+    params.cache_size = cachesize?cachesize:512*1024*1024;
     params.username = username;
     params.pass = password;
     params.use_ssl = 0;

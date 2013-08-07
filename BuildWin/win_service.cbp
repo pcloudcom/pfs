@@ -28,6 +28,7 @@
 			<Add option="-Wall" />
 			<Add option="-fexceptions" />
 			<Add option="-DUNICODE" />
+			<Add directory="../include" />
 		</Compiler>
 		<Linker>
 			<Add library="libpfs.a" />
