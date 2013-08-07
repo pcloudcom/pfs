@@ -40,4 +40,9 @@ public:
 private:
     bool setDataToRegistry(LPWSTR username, LPWSTR pass);
     void restartService();
+
+    bool m_fUseSsl;
+    int m_nCacheSize;
+public:
+    afx_msg void OnBnClickedSettings();
 };

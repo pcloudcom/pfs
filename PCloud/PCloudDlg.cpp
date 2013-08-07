@@ -5,6 +5,7 @@
 #include "stdafx.h"
 #include "PCloud.h"
 #include "PCloudDlg.h"
+#include "SettingsDlg.h"
 #include "afxdialogex.h"
 
 
@@ -123,6 +124,7 @@ BEGIN_MESSAGE_MAP(CPCloudDlg, CDialogEx)
     ON_BN_CLICKED(IDCANCEL, &CPCloudDlg::OnBnClickedCancel)
     ON_BN_CLICKED(IDOK, &CPCloudDlg::OnBnClickedOk)
     ON_NOTIFY(NM_CLICK, IDC_SYSLINK1, &CPCloudDlg::OnNMClickSyslink1)
+    ON_BN_CLICKED(IDC_BUTTON1, &CPCloudDlg::OnBnClickedSettings)
 END_MESSAGE_MAP()
 
 
@@ -131,6 +133,8 @@ END_MESSAGE_MAP()
 BOOL CPCloudDlg::OnInitDialog()
 {
 	CDialogEx::OnInitDialog();
+    m_fUseSsl = false;
+    m_nCacheSize = 512;
 
 	// Set the icon for this dialog.  The framework does this automatically
 	//  when the application's main window is not a dialog
@@ -212,9 +216,21 @@ void CPCloudDlg::OnBnClickedOk()
     CDialogEx::OnOK();
 }
 
+
 void CPCloudDlg::OnNMClickSyslink1(NMHDR *pNMHDR, LRESULT *pResult)
 {
     PNMLINK pNMLink = (PNMLINK)pNMHDR;
     ::ShellExecute(m_hWnd, L"open", pNMLink->item.szUrl, NULL, NULL, SW_SHOWMAXIMIZED);
     *pResult = 0;
+}
+
+
+void CPCloudDlg::OnBnClickedSettings()
+{
+    CSettingsDlg dlg;
+    if (dlg.DoModal() == IDOK)
+    {
+        m_fUseSsl = dlg.getSsl();
+        m_nCacheSize = dlg.getCache();
+    }
 }
