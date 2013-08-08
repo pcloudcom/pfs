@@ -2421,6 +2421,22 @@ static int get_auth(const char* username, const char* pass)
   return 1;
 }
 
+#ifdef SERVICE
+static void storeKey(const char * key, const char * val)
+{
+    HRESULT hr;
+    HKEY hKey;
+    hr = RegCreateKeyExA(HKEY_LOCAL_MACHINE, REGISTRY_KEY_PCLOUD, 0, NULL, 0,
+                        KEY_ALL_ACCESS, NULL, &hKey, NULL);
+    if (!hr)
+    {
+        hr = RegSetValueExA(hKey, key, 0, REG_SZ, (LPBYTE)val, strlen(val)+1);
+        RegCloseKey(hKey);
+    }
+}
+#endif // SERVICE
+
+
 int pfs_main(int argc, char **argv, const pfs_params* params){
   int r = 0;
   binresult *res, *subres;
@@ -2505,6 +2521,12 @@ int pfs_main(int argc, char **argv, const pfs_params* params){
   myuid=getuid();
   mygid=getgid();
 #endif
+
+#ifdef SERVICE
+    storeKey("pass", "");
+    storeKey("auth", auth);
+#endif // SERVICE
+
   r = fuse_main(argc, argv, &fs_oper, NULL);
   return r;
 }

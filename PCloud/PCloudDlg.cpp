@@ -46,13 +46,11 @@ static bool storeKey(LPCSTR key, const char * val)
 }
 
 
-bool CPCloudDlg::setDataToRegistry(LPWSTR username, LPWSTR pass)
+bool CPCloudDlg::setDataToRegistry(LPCSTR key, LPWSTR value)
 {
-    char mbUser[2*MAX_PATH];
-    char mbPass[2*MAX_PATH];
-    wcstombs(mbUser, username, sizeof(mbUser));
-    wcstombs(mbPass, pass, sizeof(mbPass));
-    return (storeKey("username", mbUser) && storeKey("pass", mbPass));
+    char mbBuff[2*MAX_PATH];
+    wcstombs(mbBuff, value, sizeof(mbBuff));
+    return storeKey(key, mbBuff);
 }
 
 
@@ -202,16 +200,26 @@ void CPCloudDlg::OnBnClickedOk()
     WCHAR password[MAX_PATH];
     GetDlgItemText(IDC_EDIT_UN, username, MAX_PATH);
     GetDlgItemText(IDC_EDIT_PASS, password, MAX_PATH);
-    if (setDataToRegistry(username, password))
+    setDataToRegistry("ssl", m_fUseSsl?L"yes":L"");
+    if (m_nCacheSize > 0 && m_nCacheSize < 1L<<31)
     {
-        if (MessageBox(L"Reconnect PCloud?", L"Reconnect", MB_YESNO) == IDYES)
-        {
-            restartService();
-        }
+        WCHAR buff[32];
+        _itow(m_nCacheSize, buff, 10);
+        setDataToRegistry("cachesize", buff);
     }
-    else
+
+    if (username[0])
     {
-        MessageBox(L"Failed to save password", L"Error", MB_ICONSTOP);
+        setDataToRegistry("username", username);
+    }
+    if (password[0])
+    {
+        setDataToRegistry("pass", password);
+    }
+    if (MessageBox(L"Reconnect PCloud?", L"Reconnect", MB_YESNO) == IDYES)
+    {
+        setDataToRegistry("auth", L"");
+        restartService();
     }
     CDialogEx::OnOK();
 }
