@@ -103,7 +103,7 @@ char mountPoint[3] = "a:";
 
 DWORD WINAPI ThreadProc(LPVOID lpParam)
 {
-    pfs_params params;
+    pfs_params params = {0,};
     char username[MAX_PATH]="";
     char password[MAX_PATH]="";
     char auth[MAX_PATH]="";
@@ -123,6 +123,9 @@ DWORD WINAPI ThreadProc(LPVOID lpParam)
     getDataFromRegistry(KEY_CACHE_SIZE, buff);
     cachesize = (size_t)atol(buff);
     debug("cache size:%u\n", cachesize);
+    // Stored data is in MB - convert to bytes
+    if (cachesize > 0 && cachesize < 3000)
+        cachesize *= 1024*1024;
     getDataFromRegistry(KEY_USE_SSL, buff);
     debug("use SSL :%s\n", buff);
     if (!strcmp(buff, "ssl") || !strcmp(buff, "SSL"))
