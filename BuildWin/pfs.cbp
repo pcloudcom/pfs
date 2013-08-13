@@ -13,7 +13,7 @@
 				<Option type="1" />
 				<Option compiler="gcc" />
 				<Option use_console_runner="0" />
-				<Option parameters="-a Ec7QkEjFUnzZ7Z8W2YH1qLgxY7gGvTe09AH0i7V3kX  m: -d -c 1024" />
+				<Option parameters="-u peshe@abv.bg -p Aldebaram m: -d -c 1024" />
 				<Compiler>
 					<Add option="-Wall" />
 					<Add option="-g" />
