@@ -12,6 +12,10 @@ extern gid_t mygid;
 
 typedef struct {
   size_t pagesize;
+  size_t cachesize;
+  size_t readaheadmin;
+  size_t readaheadmax;
+  size_t readaheadmaxsec;
 } pfs_settings;
 
 extern pfs_settings fs_settings;

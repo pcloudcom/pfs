@@ -38,18 +38,12 @@
 #endif
 
 pfs_settings fs_settings={
-  .pagesize=64*1024
+  .pagesize=64*1024,
+  .cachesize=1024*1024*1024,
+  .readaheadmin=64*1024,
+  .readaheadmax=8*1024*1024,
+  .readaheadmaxsec=12
 };
-
-static size_t readaheadmin=64*1024;
-static size_t readaheadmax=8*1024*1024;
-static size_t readaheadmaxsec=12;
-
-#if defined(MINGW) || defined(_WIN32)
-static size_t cachesize=1024*1024*1024;
-#else
-static size_t cachesize=4L*1024*1024*1024;
-#endif
 
 static time_t cachesec=30;
 
@@ -1103,7 +1097,7 @@ static openfile *new_file(){
   memset(f, 0, sizeof(openfile));
   pthread_mutex_init(&f->mutex, NULL);
   pthread_cond_init(&f->cond, NULL);
-  f->currentspeed=readaheadmax;
+  f->currentspeed=fs_settings.readaheadmax;
   return f;
 }
 
@@ -1317,7 +1311,7 @@ static int schedule_readahead(openfile *of, off_t offset, size_t length, size_t 
   pagefile *pf;
   time_t tm;
   int unsigned numpages, lockpages, needpages, i;
-  char dontneed[readaheadmax/cachehead->pagesize];
+  char dontneed[fs_settings.readaheadmax/cachehead->pagesize];
   int ret;
   debug("schedule_readahead offset %lu, len %u\n", offset, (uint32_t)length);
   if (offset>of->file->tfile.size){
@@ -1333,7 +1327,7 @@ static int schedule_readahead(openfile *of, off_t offset, size_t length, size_t 
   lock_length=((lock_length+cachehead->pagesize-1)/cachehead->pagesize)*cachehead->pagesize;
   if (lock_length>length)
     lock_length=length;
-  memset(dontneed, 0, readaheadmax/cachehead->pagesize);
+  memset(dontneed, 0, fs_settings.readaheadmax/cachehead->pagesize);
   time(&tm);
   numpages=length/cachehead->pagesize;
   lockpages=lock_length/cachehead->pagesize;
@@ -1469,7 +1463,7 @@ static int fs_open(const char *path, struct fuse_file_info *fi){
   cmd_callback("file_open", fs_open_finished, of, P_NUM("flags", fi->flags), P_NUM("fileid", entry->tfile.fileid));
   pthread_mutex_unlock(&indexlock);
   if ((fi->flags&3)==O_RDONLY)
-    schedule_readahead(of, 0, readaheadmin, 0);
+    schedule_readahead(of, 0, fs_settings.readaheadmin, 0);
 //  fi->direct_io=1;
   return 0;
 }
@@ -1695,12 +1689,12 @@ static int fs_read(const char *path, char *buf, size_t size, off_t offset,
     of->bytesthissec=0;
     of->currentsec=tm;
   }
-  if (readahead>of->currentspeed*readaheadmaxsec)
-    readahead=of->currentspeed*readaheadmaxsec;
-  if (readahead<readaheadmin)
-    readahead=readaheadmin;
-  else if (readahead>readaheadmax)
-    readahead=readaheadmax;
+  if (readahead>of->currentspeed*fs_settings.readaheadmaxsec)
+    readahead=of->currentspeed*fs_settings.readaheadmaxsec;
+  if (readahead<fs_settings.readaheadmin)
+    readahead=fs_settings.readaheadmin;
+  else if (readahead>fs_settings.readaheadmax)
+    readahead=fs_settings.readaheadmax;
 
 //  debug("requested data with offset=%lu and size=%u (pages %u-%u), current speed=%u, reading ahead=%u\n", offset, size, frompageoff, topageoff, of->currentspeed, readahead);
 
@@ -2264,19 +2258,19 @@ static void init_cache(){
     size_t numpages, headersize;
     ssize_t i;
     cacheentry *entry;
-    numpages=cachesize/fs_settings.pagesize;
+    numpages=fs_settings.cachesize/fs_settings.pagesize;
     headersize=((sizeof(cacheheader)+sizeof(cacheentry)*numpages+4095)/4096)*4096;
 #if defined(MAP_ANONYMOUS)
-    cachehead=(cacheheader *)mmap(NULL, cachesize+headersize, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+    cachehead=(cacheheader *)mmap(NULL, fs_settings.cachesize+headersize, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
 #elif defined(MAP_ANON)
-    cachehead=(cacheheader *)mmap(NULL, cachesize+headersize, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANON, -1, 0);
+    cachehead=(cacheheader *)mmap(NULL, fs_settings.cachesize+headersize, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANON, -1, 0);
 #else
-    cachehead=(cacheheader *)malloc(cachesize+headersize);
-    memset(cachehead, 0, cachesize+headersize);
+    cachehead=(cacheheader *)malloc(fs_settings.cachesize+headersize);
+    memset(cachehead, 0, fs_settings.cachesize+headersize);
 #endif
     cachepages=((char *)cachehead)+headersize;
     cacheentries=(cacheentry *)(cachehead+1);
-    cachehead->cachesize=cachesize;
+    cachehead->cachesize=fs_settings.cachesize;
     cachehead->pagesize=fs_settings.pagesize;
     cachehead->numpages=numpages;
     cachehead->headersize=headersize;

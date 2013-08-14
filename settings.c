@@ -36,8 +36,61 @@ static int set_page_size(const char *str, size_t len){
   return 0;
 }
 
+static void get_cache_size(char *data, size_t *sz){
+  setting_get_size_t(data, sz, fs_settings.cachesize);
+}
+
+static int set_cache_size(const char *str, size_t len){
+  size_t sz=atol(str);
+  if (sz<fs_settings.pagesize*4)
+    return -EINVAL;
+  if (sizeof(void *)==4 && sz>2*1024*1024*1024)
+    return -EINVAL;
+  fs_settings.cachesize=sz;
+  reset_cache();
+  return 0;
+}
+
+static void get_readahead_min(char *data, size_t *sz){
+  setting_get_size_t(data, sz, fs_settings.readaheadmin);
+}
+
+static int set_readahead_min(const char *str, size_t len){
+  size_t sz=atol(str);
+  if (sz>fs_settings.readaheadmax)
+    return -EINVAL;
+  fs_settings.readaheadmin=sz;
+  return 0;
+}
+
+static void get_readahead_max(char *data, size_t *sz){
+  setting_get_size_t(data, sz, fs_settings.readaheadmax);
+}
+
+static int set_readahead_max(const char *str, size_t len){
+  size_t sz=atol(str);
+  if (sz<fs_settings.readaheadmin)
+    return -EINVAL;
+  fs_settings.readaheadmax=sz;
+  return 0;
+}
+
+static void get_readahead_max_sec(char *data, size_t *sz){
+  setting_get_size_t(data, sz, fs_settings.readaheadmaxsec);
+}
+
+static int set_readahead_max_sec(const char *str, size_t len){
+  size_t sz=atol(str);
+  fs_settings.readaheadmaxsec=sz;
+  return 0;
+}
+
 static setting settings[]={
-  {"page_size", get_page_size, set_page_size}
+  {"page_size", get_page_size, set_page_size},
+  {"cache_size", get_cache_size, set_cache_size},
+  {"readahead_min", get_readahead_min, set_readahead_min},
+  {"readahead_max", get_readahead_max, set_readahead_max},
+  {"readahead_max_sec", get_readahead_max_sec, set_readahead_max_sec}
 };
 
 static const char *setting_names[SETTINGSCNT+1];
