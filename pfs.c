@@ -230,6 +230,8 @@ typedef struct {
   openfile *of;
 } pagefile;
 
+#define wait_for_allowed_calls() do {pthread_mutex_lock(&calllock); pthread_mutex_unlock(&calllock); } while (0)
+
 static cacheheader *cachehead;
 static cacheentry *cacheentries;
 static void *cachepages;
@@ -239,9 +241,9 @@ static cacheentry *freecache=NULL;
 static uint64_t taskid=1;
 static uint64_t filesopened=0;
 static task *tasks=NULL;
+static pthread_mutex_t calllock=PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t pageslock=PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t taskslock=PTHREAD_MUTEX_INITIALIZER;
-static pthread_cond_t taskscond=PTHREAD_COND_INITIALIZER;
 static pthread_mutex_t writelock=PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t indexlock=PTHREAD_MUTEX_INITIALIZER;
 
@@ -251,8 +253,8 @@ static pthread_cond_t datacond=PTHREAD_COND_INITIALIZER;
 static pthread_mutex_t treelock=PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t treecond=PTHREAD_COND_INITIALIZER;
 
-static int stoptasks=0;
 static int unsigned treesleep=0;
+static int processingtask=0;
 
 static time_t timeoff;
 
@@ -324,8 +326,6 @@ static binresult *do_cmd(const char *command, size_t cmdlen, const void *data, s
     pthread_mutex_lock(&mymutex);
   }
   pthread_mutex_lock(&taskslock);
-  if (stoptasks)
-    pthread_cond_wait(&taskscond, &taskslock);
   debug("Do-cmd send %u\n", (uint32_t)taskid);
   ptask->taskid=taskid++;
   ptask->next=tasks;
@@ -444,9 +444,10 @@ static void cancel_all_and_reconnect(){
 }
 
 static void stop_and_wait_pending(){
+  int c=2;
+  pthread_mutex_lock(&calllock);
   pthread_mutex_lock(&taskslock);
-  stoptasks=1;
-  while (tasks){
+  while (tasks || processingtask || c--){
     pthread_mutex_unlock(&taskslock);
     milisleep(10);
     pthread_mutex_lock(&taskslock);
@@ -455,10 +456,7 @@ static void stop_and_wait_pending(){
 }
 
 static void resume_tasks(){
-  pthread_mutex_lock(&taskslock);
-  stoptasks=0;
-  pthread_cond_broadcast(&taskscond);
-  pthread_mutex_unlock(&taskslock);
+  pthread_mutex_unlock(&calllock);
 }
 
 
@@ -485,6 +483,7 @@ static void *receive_thread(void *ptr){
     while (t){
       if (t->taskid==id->num){
         *pt=t->next;
+        processingtask++;
         break;
       }
       pt=&t->next;
@@ -524,6 +523,9 @@ static void *receive_thread(void *ptr){
     }
     else
       free(res);
+    pthread_mutex_lock(&taskslock);
+    processingtask--;
+    pthread_mutex_unlock(&taskslock);
 //    debug("receive_thread - end loop\n");
   }
   return NULL;
@@ -1095,6 +1097,7 @@ static int fs_statfs(const char *path, struct statvfs *stbuf){
   else {
     q=0;
     uq=0;
+    wait_for_allowed_calls();
     res=cmd("userinfo");
     if (res){
       if (find_res(res, "result")->num==0){
@@ -1136,6 +1139,7 @@ static int fs_creat(const char *path, mode_t mode, struct fuse_file_info *fi){
   openfile *of;
   uint64_t folderid, fd, fileid;
   debug("create - %s \n", path);
+  wait_for_allowed_calls();
   pthread_mutex_lock(&treelock);
   entry=get_parent_folder(path, &name);
   if (!entry){
@@ -1465,6 +1469,7 @@ static int fs_open(const char *path, struct fuse_file_info *fi){
   debug("fs_open %s\n", path);
   if (!strncmp(path, SETTINGS_PATH "/", strlen(SETTINGS_PATH)+1))
     return open_setting(path+strlen(SETTINGS_PATH)+1, fi);
+  wait_for_allowed_calls();
   pthread_mutex_lock(&treelock);
   entry=get_node_by_path(path);
   if (!entry){
@@ -1523,6 +1528,7 @@ static int fs_release(const char *path, struct fuse_file_info *fi){
     free(of);
     return 0;
   }
+  wait_for_allowed_calls();
   fd_magick_start(of);
   cmd_callback("file_close", fs_release_finished, of, fdparam);
   fd_magick_stop();
@@ -1677,6 +1683,8 @@ static int fs_read(const char *path, char *buf, size_t size, off_t offset,
   if (of->issetting)
     return fs_read_setting(of, buf, size, offset);
 
+  wait_for_allowed_calls();
+  
   debug ("fs_read %s, off: %lu, size: %u\n", path, offset, (uint32_t)size);
 
   readahead=0;
@@ -1896,6 +1904,8 @@ static int fs_write(const char *path, const char *buf, size_t size, off_t offset
   if (of->issetting)
     return fs_write_setting(of, buf, size, offset);
 
+  wait_for_allowed_calls();
+  
   pthread_mutex_lock(&of->mutex);
   if (of->error){
     pthread_mutex_unlock(&of->mutex);
@@ -1969,6 +1979,8 @@ static int fs_ftruncate(const char *path, off_t size, struct fuse_file_info *fi)
     of->ismodified=1;
     return 0;
   }
+  
+  wait_for_allowed_calls();
 
   debug ("fs_ftruncate %s -> %lu\n", path, size);
 
@@ -2031,6 +2043,8 @@ static int fs_truncate(const char *path, off_t size){
   uint64_t fileid;
 
   debug ("fs_truncate %s\n", path);
+  
+  wait_for_allowed_calls();
 
   pthread_mutex_lock(&treelock);
   entry=get_node_by_path(path);
@@ -2059,6 +2073,7 @@ static int fs_mkdir(const char *path, mode_t mode){
   const char *name;
   uint64_t folderid;
   debug("fs_mkdir %s\n", path);
+  wait_for_allowed_calls();
   pthread_mutex_lock(&treelock);
   entry=get_parent_folder(path, &name);
   if (!entry){
@@ -2106,6 +2121,7 @@ static int fs_rmdir(const char *path){
   binresult *res, *sub;
   uint64_t folderid;
   debug("fs_rmdir %s\n", path);
+  wait_for_allowed_calls();
   pthread_mutex_lock(&treelock);
   entry=get_node_by_path(path);
   if (!entry){
@@ -2141,6 +2157,8 @@ static int fs_unlink(const char *path){
   uint64_t fileid;
 
   debug ("fs_unlink %s\n", path);
+  
+  wait_for_allowed_calls();
 
   pthread_mutex_lock(&treelock);
   entry=get_node_by_path(path);
@@ -2236,6 +2254,7 @@ static int fs_rename(const char *old_path, const char *new_path){
   int result;
   uint64_t srcid;
   debug("rename from %s fo %s\n", old_path, new_path);
+  wait_for_allowed_calls();
   pthread_mutex_lock(&treelock);
   entry=get_node_by_path(old_path);
   if (!entry){
@@ -2362,8 +2381,8 @@ void *fs_init(struct fuse_conn_info *conn){
   pthread_mutexattr_settype(&mattr, PTHREAD_MUTEX_RECURSIVE);
   pthread_mutex_init(&pageslock, &mattr);
 
+  pthread_mutex_init(&calllock, NULL);
   pthread_mutex_init(&taskslock, NULL);
-  pthread_cond_init(&taskscond, NULL);
   pthread_mutex_init(&writelock, NULL);
   pthread_mutex_init(&indexlock, NULL);
   pthread_mutex_init(&datamutex, NULL);
