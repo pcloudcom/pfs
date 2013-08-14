@@ -20,7 +20,7 @@ typedef struct {
 } setting;
 
 static void setting_get_size_t(char *data, size_t *sz, size_t num){
-  *sz=snprintf(data, *sz, "%lu\n", num);
+  *sz=snprintf(data, *sz, "%lu\n", (unsigned long)num);
 }
 
 static void get_page_size(char *data, size_t *sz){
@@ -120,7 +120,7 @@ static void init_settings(){
     setting_stat[i].st_blksize=FS_BLOCK_SIZE;
 #endif
     setting_stat[i].st_uid=myuid;
-    setting_stat[i].st_gid=mygid;    
+    setting_stat[i].st_gid=mygid;
   }
   setting_names[SETTINGSCNT]=NULL;
   settings_stat.st_ctime=tm;
@@ -133,7 +133,7 @@ static void init_settings(){
   settings_stat.st_blksize=FS_BLOCK_SIZE;
 #endif
   settings_stat.st_uid=myuid;
-  settings_stat.st_gid=mygid;    
+  settings_stat.st_gid=mygid;
   names_init=1;
 }
 

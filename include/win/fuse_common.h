@@ -29,7 +29,7 @@
 #define FUSE_MAKE_VERSION(maj, min)  ((maj) * 10 + (min))
 #define FUSE_VERSION FUSE_MAKE_VERSION(FUSE_MAJOR_VERSION, FUSE_MINOR_VERSION)
 
-/* This interface uses 64 bit off_t, except on Windows where it's 
+/* This interface uses 64 bit off_t, except on Windows where it's
 possible to use 32-bit filelengths for compatibility with MSVC CRT */
 #ifndef WIN32
 /* This interface uses 64 bit off_t */
@@ -116,9 +116,19 @@ struct fuse_conn_info {
 	unsigned max_readahead;
 
 	/**
+	 * Capability flags, that the kernel supports
+	 */
+	unsigned capable;
+
+	/**
+	 * Capability flags, that the filesystem wants to enable
+	 */
+	unsigned want;
+
+	/**
 	 * For future use.
 	 */
-	unsigned reserved[27];
+	unsigned reserved[25];
 };
 
 struct fuse_session;

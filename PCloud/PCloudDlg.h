@@ -38,6 +38,11 @@ public:
     afx_msg LRESULT OnServiceNotify(WPARAM wParam, LPARAM lParam);
 
 private:
-    bool setDataToRegistry(LPWSTR username, LPWSTR pass);
+    bool setDataToRegistry(LPCSTR key, LPWSTR value);
     void restartService();
+
+    bool m_fUseSsl;
+    size_t m_nCacheSize;
+public:
+    afx_msg void OnBnClickedSettings();
 };

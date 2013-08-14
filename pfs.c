@@ -45,6 +45,15 @@ pfs_settings fs_settings={
   .readaheadmaxsec=12
 };
 
+
+#if defined(MINGW) || defined(_WIN32)
+#define MIN_CACHE_SIZE 0
+#define MAX_CACHE_SIZE ((size_t)2*1024*1024*1024)
+#else
+#define MIN_CACHE_SIZE 0L
+#define MAX_CACHE_SIZE 16L*1024*1024*1024
+#endif
+
 static time_t cachesec=30;
 
 static time_t laststatfs=0;
@@ -1645,7 +1654,7 @@ static int fs_read(const char *path, char *buf, size_t size, off_t offset,
    * executing in parralel. On the other hand, corrupted streams table will only lead to miscalculated readahed, but still winthin
    * boundaries, so generally no harm.
    */
-  
+
   if (of->issetting)
     return fs_read_setting(of, buf, size, offset);
 
@@ -1864,7 +1873,7 @@ static int fs_write(const char *path, const char *buf, size_t size, off_t offset
   uint32_t frompageoff, topageoff;
   of=(openfile *)((uintptr_t)fi->fh);
   debug ("fs_write %s\n", path);
-  
+
   if (of->issetting)
     return fs_write_setting(of, buf, size, offset);
 
@@ -2258,6 +2267,9 @@ static void init_cache(){
     size_t numpages, headersize;
     ssize_t i;
     cacheentry *entry;
+#if !defined(MAP_ANONYMOUS) && !defined(MAP_ANON)
+    do{
+#endif
     numpages=fs_settings.cachesize/fs_settings.pagesize;
     headersize=((sizeof(cacheheader)+sizeof(cacheentry)*numpages+4095)/4096)*4096;
 #if defined(MAP_ANONYMOUS)
@@ -2266,6 +2278,15 @@ static void init_cache(){
     cachehead=(cacheheader *)mmap(NULL, fs_settings.cachesize+headersize, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANON, -1, 0);
 #else
     cachehead=(cacheheader *)malloc(fs_settings.cachesize+headersize);
+    if (!cachehead){
+        if (fs_settings.cachesize > MIN_CACHE_SIZE)
+          fs_settings.cachesize/=2;
+        else 
+          exit(-ENOMEM);
+    }
+    } while (!cachehead);
+    debug("cache allocated size:%lu, page: %lu, pages: %lu\n",
+          (unsigned long)fs_settings.cachesize, (unsigned long)fs_settings.pagesize, (unsigned long)numpages);
     memset(cachehead, 0, fs_settings.cachesize+headersize);
 #endif
     cachepages=((char *)cachehead)+headersize;
@@ -2401,6 +2422,22 @@ static int get_auth(const char* username, const char* pass)
   return 1;
 }
 
+#ifdef SERVICE
+static void storeKey(const char * key, const char * val)
+{
+    HRESULT hr;
+    HKEY hKey;
+    hr = RegCreateKeyExA(HKEY_LOCAL_MACHINE, REGISTRY_KEY_PCLOUD, 0, NULL, 0,
+                        KEY_ALL_ACCESS, NULL, &hKey, NULL);
+    if (!hr)
+    {
+        hr = RegSetValueExA(hKey, key, 0, REG_SZ, (LPBYTE)val, strlen(val)+1);
+        RegCloseKey(hKey);
+    }
+}
+#endif // SERVICE
+
+
 int pfs_main(int argc, char **argv, const pfs_params* params){
   int r = 0;
   binresult *res, *subres;
@@ -2410,8 +2447,25 @@ int pfs_main(int argc, char **argv, const pfs_params* params){
     debug("\t %s \n", argv[r]);
   if (params->username && params->pass)
     debug("username %s, password %s\n", params->username, params->pass);
+  if (params->auth)
+    debug("auth %s\n", params->auth);
+  if (params->cache_size)
+    debug("cache size: %u B\n", params->cache_size);
+  if (params->page_size)
+    debug("cache page size: %u B\n", params->page_size);
 
+
+  if (params->cache_size){
+    if (params->cache_size >= MIN_CACHE_SIZE && params->cache_size <= MAX_CACHE_SIZE)
+      fs_settings.cachesize = params->cache_size;
+  }
+  if (params->page_size){
+    debug("set pagesize - not implemented!\n");
+  }
+
+  usessl = params->use_ssl;
   if (usessl){
+    debug("use ssl is ON\n");
     sock=api_connect_ssl();
     diffsock=api_connect_ssl();
   }
@@ -2425,7 +2479,6 @@ int pfs_main(int argc, char **argv, const pfs_params* params){
   }
 
   if (params->username && params->pass){
-//    debug("try to get auth\n");
     get_auth(params->username, params->pass);
   }else if(params->auth){
     auth = (char*)params->auth;
@@ -2469,10 +2522,17 @@ int pfs_main(int argc, char **argv, const pfs_params* params){
   myuid=getuid();
   mygid=getgid();
 #endif
+
+#ifdef SERVICE
+    storeKey("pass", "");
+    storeKey("auth", auth);
+#endif // SERVICE
+
   r = fuse_main(argc, argv, &fs_oper, NULL);
   return r;
 }
 
+#ifndef SERVICE
 static int parse_pfs_param(int * i, int argc, char ** argv, pfs_params* params){
   if ((!strcmp(argv[*i], "-u") || !strcmp(argv[*i], "--user")) && *i+1 < argc) {
     ++*i;
@@ -2503,6 +2563,12 @@ static int parse_pfs_param(int * i, int argc, char ** argv, pfs_params* params){
     ++*i;
     return 1;
   }
+  if ((!strcmp(argv[*i], "-g") || !strcmp(argv[*i], "--page")) && *i+1<argc){
+    ++*i;
+    params->page_size=atoi(argv[*i]);
+    ++*i;
+    return 1;
+  }
   return 0;
 }
 
@@ -2518,7 +2584,6 @@ static int parse_args(int argc, char** argv, char ** parsed_argv, pfs_params * p
   return param_cnt;
 }
 
-#ifndef SERVICE
 int main(int argc, char **argv){
   pfs_params params;
   int parsed_argc;

@@ -11,11 +11,11 @@ extern "C" int pfs_main(int argc, char **argv, const pfs_params* params);
 #define SZSERVICEDISPLAYNAME   L"PCloud File System"
 #define DOKAN_DLL              L"dokan.dll"
 
-#define REGISTRY_KEY_PCLOUD    L"SOFTWARE\\PCloud\\pfs"
-
 #define KEY_USER               "username"
 #define KEY_PASS               "pass"
 #define KEY_AUTH               "auth"
+#define KEY_CACHE_SIZE         "cachesize"
+#define KEY_USE_SSL            "ssl"
 #define KEY_DELETE             "del"
 
 #ifndef ENOTCONN
@@ -70,7 +70,7 @@ static void storeKey(LPCSTR key, const char * val)
 {
     HRESULT hr;
     HKEY hKey;
-    hr = RegCreateKeyEx(HKEY_LOCAL_MACHINE, REGISTRY_KEY_PCLOUD, 0, NULL, 0,
+    hr = RegCreateKeyExA(HKEY_LOCAL_MACHINE, REGISTRY_KEY_PCLOUD, 0, NULL, 0,
                         KEY_ALL_ACCESS, NULL, &hKey, NULL);
     if (!hr)
     {
@@ -86,11 +86,11 @@ static void getDataFromRegistry(const char* key, char data[MAX_PATH])
     char buffer[MAX_PATH];
     DWORD cbDataSize = sizeof(buffer);
     HKEY hKey;
-    hr = RegOpenKeyEx(HKEY_LOCAL_MACHINE, REGISTRY_KEY_PCLOUD, 0, KEY_READ, &hKey);
+    hr = RegOpenKeyExA(HKEY_LOCAL_MACHINE, REGISTRY_KEY_PCLOUD, 0, KEY_READ, &hKey);
     if (hr)
     {
         storeKey(key, "");
-        hr = RegOpenKeyEx(HKEY_LOCAL_MACHINE, REGISTRY_KEY_PCLOUD, 0, KEY_READ, &hKey);
+        hr = RegOpenKeyExA(HKEY_LOCAL_MACHINE, REGISTRY_KEY_PCLOUD, 0, KEY_READ, &hKey);
     }
     if (!hr)
     {
@@ -103,24 +103,48 @@ char mountPoint[3] = "a:";
 
 DWORD WINAPI ThreadProc(LPVOID lpParam)
 {
-    pfs_params params;
+    pfs_params params = {0,};
     char username[MAX_PATH]="";
     char password[MAX_PATH]="";
+    char auth[MAX_PATH]="";
+    char buff[MAX_PATH] = "";
+    size_t cachesize;
     char* argv[2] = {(char *)"pfs", mountPoint};
 
     storeKey("lr", "");
 
     mountPoint[0] = getFirstFreeDevice();
+    getDataFromRegistry(KEY_AUTH, auth);
+    debug("auth:%s\n", auth);
     getDataFromRegistry(KEY_USER, username);
     debug("user:%s\n", username);
     getDataFromRegistry(KEY_PASS, password);
     debug("pass:%s\n", password);
+    getDataFromRegistry(KEY_CACHE_SIZE, buff);
+    cachesize = (size_t)atol(buff);
+    debug("cache size:%u\n", cachesize);
+    // Stored data is in MB - convert to bytes
+    if (cachesize > 0 && cachesize < 3000)
+        cachesize *= 1024*1024;
+    getDataFromRegistry(KEY_USE_SSL, buff);
+    debug("use SSL :%s\n", buff);
+    if (!strcmp(buff, "ssl") || !strcmp(buff, "SSL"))
+        params.use_ssl = 1;
 
-    params.auth = NULL;
-    params.cache_size = 512*1024*1024;
+    if (auth[0])
+    {
+        params.auth = auth;
+        params.pass = NULL;
+    }
+    else
+    {
+        params.auth = NULL;
+        params.pass = password;
+    }
+
     params.username = username;
-    params.pass = password;
     params.use_ssl = 0;
+    params.cache_size = cachesize?cachesize:512*1024*1024;
 
     int res = pfs_main(2, argv, &params);
     if (res == ENOTCONN)
@@ -149,11 +173,6 @@ VOID WINAPI ServiceStart(const wchar_t * config_file)
         if (loop < 1000 && loop % 10 == 0)
         {
             DWORD recipients = BSM_ALLDESKTOPS | BSM_APPLICATIONS;
-//            DEV_BROADCAST_VOLUME msg;
-//            ZeroMemory(&msg, sizeof(msg));
-//            msg.dbcv_size = sizeof(msg);
-//            msg.dbcv_devicetype = DBT_DEVTYP_VOLUME;
-//            msg.dbcv_unitmask = 1 << (mountPoint[0] - 'A');
             BroadcastSystemMessage(0, &recipients, WM_DEVICECHANGE, DBT_CONFIGCHANGED, 0);
             loop = 0;
         }

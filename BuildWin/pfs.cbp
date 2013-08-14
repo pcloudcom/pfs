@@ -13,7 +13,7 @@
 				<Option type="1" />
 				<Option compiler="gcc" />
 				<Option use_console_runner="0" />
-				<Option parameters="-u peshe -p Aldebaram m: -d -c 512" />
+				<Option parameters="-u peshe@abv.bg -p Aldebaram m: -d -c 1024" />
 				<Compiler>
 					<Add option="-Wall" />
 					<Add option="-g" />
@@ -102,6 +102,9 @@
 			<Option compilerVar="CC" />
 		</Unit>
 		<Unit filename="../pfs.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../settings.c">
 			<Option compilerVar="CC" />
 		</Unit>
 		<Extensions>
