@@ -24,6 +24,7 @@
 #if defined(MINGW) || defined(_WIN32)
 
 #define sleep(x) Sleep(1000*(x))
+#define milisleep(x) Sleep((x))
 #define index(str, c) strchr(str, c)
 #define rindex(str, c) strrchr(str, c)
 
@@ -34,6 +35,10 @@
 #ifndef ST_NOSUID
 #   define ST_NOSUID        2
 #endif
+
+#else
+
+#define milisleep(x) usleep((x)*1000)
 
 #endif
 
@@ -236,6 +241,7 @@ static uint64_t filesopened=0;
 static task *tasks=NULL;
 static pthread_mutex_t pageslock=PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t taskslock=PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t taskscond=PTHREAD_COND_INITIALIZER;
 static pthread_mutex_t writelock=PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t indexlock=PTHREAD_MUTEX_INITIALIZER;
 
@@ -245,6 +251,7 @@ static pthread_cond_t datacond=PTHREAD_COND_INITIALIZER;
 static pthread_mutex_t treelock=PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t treecond=PTHREAD_COND_INITIALIZER;
 
+static int stoptasks=0;
 static int unsigned treesleep=0;
 
 static time_t timeoff;
@@ -317,6 +324,8 @@ static binresult *do_cmd(const char *command, size_t cmdlen, const void *data, s
     pthread_mutex_lock(&mymutex);
   }
   pthread_mutex_lock(&taskslock);
+  if (stoptasks)
+    pthread_cond_wait(&taskscond, &taskslock);
   debug("Do-cmd send %u\n", (uint32_t)taskid);
   ptask->taskid=taskid++;
   ptask->next=tasks;
@@ -433,6 +442,25 @@ static void cancel_all_and_reconnect(){
   cancel_all();
   debug("cancel_all_and_reconnect leave\n");
 }
+
+static void stop_and_wait_pending(){
+  pthread_mutex_lock(&taskslock);
+  stoptasks=1;
+  while (tasks){
+    pthread_mutex_unlock(&taskslock);
+    milisleep(10);
+    pthread_mutex_lock(&taskslock);
+  }
+  pthread_mutex_unlock(&taskslock);
+}
+
+static void resume_tasks(){
+  pthread_mutex_lock(&taskslock);
+  stoptasks=0;
+  pthread_cond_broadcast(&taskscond);
+  pthread_mutex_unlock(&taskslock);
+}
+
 
 static void *receive_thread(void *ptr){
   binresult *res, *id, *sub;
@@ -1302,7 +1330,7 @@ err:
     pthread_cond_broadcast(&page->cond);
   }
   pthread_mutex_unlock(&pageslock);
-  if (res) dec_openfile_refcnt(of);
+  dec_openfile_refcnt(of);
   debug("schedule_readahead_finished out Err\n");
 }
 
@@ -2298,7 +2326,7 @@ static void init_cache(){
 
 void reset_cache(){
   size_t i;
-  cancel_all();
+  stop_and_wait_pending();
   pthread_mutex_lock(&pageslock);
   for (i=0; i<cachehead->numpages; i++)
     list_del(&cacheentries[i]);
@@ -2312,7 +2340,7 @@ void reset_cache(){
   freecache=NULL;
   init_cache();
   pthread_mutex_unlock(&pageslock);
-  cancel_all();
+  resume_tasks();
 }
 
 void *fs_init(struct fuse_conn_info *conn){
@@ -2335,6 +2363,7 @@ void *fs_init(struct fuse_conn_info *conn){
   pthread_mutex_init(&pageslock, &mattr);
 
   pthread_mutex_init(&taskslock, NULL);
+  pthread_cond_init(&taskscond, NULL);
   pthread_mutex_init(&writelock, NULL);
   pthread_mutex_init(&indexlock, NULL);
   pthread_mutex_init(&datamutex, NULL);
