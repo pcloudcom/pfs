@@ -45,15 +45,6 @@ pfs_settings fs_settings={
   .readaheadmaxsec=12
 };
 
-
-#if defined(MINGW) || defined(_WIN32)
-#define MIN_CACHE_SIZE 0
-#define MAX_CACHE_SIZE ((size_t)2*1024*1024*1024)
-#else
-#define MIN_CACHE_SIZE 0L
-#define MAX_CACHE_SIZE 16L*1024*1024*1024
-#endif
-
 static time_t cachesec=30;
 
 static time_t laststatfs=0;

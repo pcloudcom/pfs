@@ -44,7 +44,7 @@ static int set_cache_size(const char *str, size_t len){
   size_t sz=atol(str);
   if (sz<fs_settings.pagesize*4)
     return -EINVAL;
-  if (sizeof(void *)==4 && sz>2*1024*1024*1024)
+  if (sz>MAX_CACHE_SIZE)
     return -EINVAL;
   fs_settings.cachesize=sz;
   reset_cache();
