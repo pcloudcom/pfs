@@ -475,8 +475,13 @@ static int connect_res(struct addrinfo *res){
 
 static int connect_socket(const char *host, const char *port){
   struct addrinfo *res=NULL;
+  struct addrinfo hints;
   int sock, rc;
   rc=getaddrinfo(host, port, NULL, &res);
+  memset(&hints, 0, sizeof(hints));
+  hints.ai_family=AF_UNSPEC;
+  hints.ai_socktype=SOCK_STREAM;
+  rc=getaddrinfo(host, port, &hints, &res);
 #if defined(MINGW) || defined(_WIN32)
     if (rc != 0){
         if (rc == WSANOTINITIALISED){
