@@ -2393,7 +2393,6 @@ void *fs_init(struct fuse_conn_info *conn){
   pthread_mutex_init(&treelock, &mattr);
   pthread_cond_init(&treecond, NULL);
 
-  conn->want=0;
 #if defined(FUSE_CAP_ASYNC_READ)
   conn->want|=FUSE_CAP_ASYNC_READ;
 #endif
