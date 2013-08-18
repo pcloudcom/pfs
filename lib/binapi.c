@@ -48,11 +48,7 @@ static binresult BOOL_FALSE={PARAM_BOOL, 0, {0}};
 static int writeallfd(int sock, const void *ptr, size_t len){
   ssize_t res;
   while (len){
-#if defined(MINGW) || defined(_WIN32)
     res=send(sock, ptr, len, 0);
-#else
-    res=send(sock, ptr, len);
-#endif
     if (res==-1){
       debug(" ---  send failed\n");
       if (errno==EINTR || errno==EAGAIN){
@@ -90,11 +86,7 @@ static ssize_t readallfd(int sock, void *ptr, size_t len){
   ssize_t ret, rd;
   rd=0;
   while (rd<len){
-#if defined(MINGW) || defined(_WIN32)
     ret=recv(sock, ptr+rd, len-rd, 0);
-#else
-    ret=read(sock, ptr+rd, len-rd);
-#endif
     if (ret==0){
       debug("   ---  read - socket closed properly... \n");
       return -1;
