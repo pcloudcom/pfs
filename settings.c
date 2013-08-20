@@ -23,6 +23,16 @@ static void setting_get_size_t(char *data, size_t *sz, size_t num){
   *sz=snprintf(data, *sz, "%lu\n", (unsigned long)num);
 }
 
+static void setting_get_bool(char *data, size_t *sz, int b){
+  *sz=2;
+  if (b)
+    data[0]='1';
+  else
+    data[0]='0';
+  data[1]='\n';
+  data[2]=0;
+}
+
 static void get_page_size(char *data, size_t *sz){
   setting_get_size_t(data, sz, fs_settings.pagesize);
 }
@@ -85,12 +95,22 @@ static int set_readahead_max_sec(const char *str, size_t len){
   return 0;
 }
 
+static void get_use_ssl(char *data, size_t *sz){
+  setting_get_bool(data, sz, fs_settings.usessl);
+}
+
+static int set_use_ssl(const char *str, size_t len){
+  fs_settings.usessl=atoi(str)?1:0;
+  return 0;
+}
+
 static setting settings[]={
   {"page_size", get_page_size, set_page_size},
   {"cache_size", get_cache_size, set_cache_size},
   {"readahead_min", get_readahead_min, set_readahead_min},
   {"readahead_max", get_readahead_max, set_readahead_max},
-  {"readahead_max_sec", get_readahead_max_sec, set_readahead_max_sec}
+  {"readahead_max_sec", get_readahead_max_sec, set_readahead_max_sec},
+  {"use_ssl", get_use_ssl, set_use_ssl}
 };
 
 static const char *setting_names[SETTINGSCNT+1];
