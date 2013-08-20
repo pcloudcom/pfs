@@ -3,6 +3,7 @@
 
 cmd="gcc -Wall -O2 -g -Iinclude $1 -march=native -c lib/binapi.c"
 echo $cmd
+$cmd
 cmd="gcc -Wall -O2 -g -Iinclude $1 -march=native `pkg-config fuse --cflags` -c settings.c"
 echo $cmd
 $cmd
