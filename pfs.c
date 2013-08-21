@@ -1683,7 +1683,7 @@ static int fs_read(const char *path, char *buf, size_t size, off_t offset,
     return fs_read_setting(of, buf, size, offset);
 
   wait_for_allowed_calls();
-  
+
   debug ("fs_read %s, off: %lu, size: %u\n", path, offset, (uint32_t)size);
 
   readahead=0;
@@ -1904,7 +1904,7 @@ static int fs_write(const char *path, const char *buf, size_t size, off_t offset
     return fs_write_setting(of, buf, size, offset);
 
   wait_for_allowed_calls();
-  
+
   pthread_mutex_lock(&of->mutex);
   if (of->error){
     pthread_mutex_unlock(&of->mutex);
@@ -1978,7 +1978,7 @@ static int fs_ftruncate(const char *path, off_t size, struct fuse_file_info *fi)
     of->ismodified=1;
     return 0;
   }
-  
+
   wait_for_allowed_calls();
 
   debug ("fs_ftruncate %s -> %lu\n", path, size);
@@ -2042,7 +2042,7 @@ static int fs_truncate(const char *path, off_t size){
   uint64_t fileid;
 
   debug ("fs_truncate %s\n", path);
-  
+
   wait_for_allowed_calls();
 
   pthread_mutex_lock(&treelock);
@@ -2156,7 +2156,7 @@ static int fs_unlink(const char *path){
   uint64_t fileid;
 
   debug ("fs_unlink %s\n", path);
-  
+
   wait_for_allowed_calls();
 
   pthread_mutex_lock(&treelock);
@@ -2318,7 +2318,7 @@ static void init_cache(){
     if (!cachehead){
         if (fs_settings.cachesize > MIN_CACHE_SIZE)
           fs_settings.cachesize/=2;
-        else 
+        else
           exit(-ENOMEM);
     }
     } while (!cachehead);
@@ -2459,22 +2459,6 @@ static int get_auth(const char* username, const char* pass)
   return 1;
 }
 
-#ifdef SERVICE
-static void storeKey(const char * key, const char * val)
-{
-    HRESULT hr;
-    HKEY hKey;
-    hr = RegCreateKeyExA(HKEY_LOCAL_MACHINE, REGISTRY_KEY_PCLOUD, 0, NULL, 0,
-                        KEY_ALL_ACCESS, NULL, &hKey, NULL);
-    if (!hr)
-    {
-        hr = RegSetValueExA(hKey, key, 0, REG_SZ, (LPBYTE)val, strlen(val)+1);
-        RegCloseKey(hKey);
-    }
-}
-#endif // SERVICE
-
-
 int pfs_main(int argc, char **argv, const pfs_params* params){
   int r = 0;
   binresult *res, *subres;
@@ -2559,12 +2543,6 @@ int pfs_main(int argc, char **argv, const pfs_params* params){
   myuid=getuid();
   mygid=getgid();
 #endif
-
-#ifdef SERVICE
-    storeKey("pass", "");
-    storeKey("auth", auth);
-#endif // SERVICE
-
   r = fuse_main(argc, argv, &fs_oper, NULL);
   return r;
 }

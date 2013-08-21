@@ -17,6 +17,7 @@ extern "C" int pfs_main(int argc, char **argv, const pfs_params* params);
 #define KEY_CACHE_SIZE         "cachesize"
 #define KEY_USE_SSL            "ssl"
 #define KEY_DELETE             "del"
+#define KEY_PATH               "path"
 
 #ifndef ENOTCONN
 #   define ENOTCONN        107
@@ -65,12 +66,21 @@ static char getFirstFreeDevice()
     return 0;
 }
 
+static bool isFreeDevice(char letter)
+{
+    DWORD devices = GetLogicalDrives();
+    if (letter >='a' && letter <= 'z')
+        letter = letter - 'a' + 'A';
+    if (letter >= 'A' && letter <= 'Z')
+        return (device & (1<<(letter-'A'))) == 0;
+    return false;
+}
 
 static void storeKey(LPCSTR key, const char * val)
 {
     HRESULT hr;
     HKEY hKey;
-    hr = RegCreateKeyExA(HKEY_LOCAL_MACHINE, REGISTRY_KEY_PCLOUD, 0, NULL, 0,
+    hr = RegCreateKeyExA(HKEY_CURRENT_USER, REGISTRY_KEY_PCLOUD, 0, NULL, 0,
                         KEY_ALL_ACCESS, NULL, &hKey, NULL);
     if (!hr)
     {
@@ -86,17 +96,33 @@ static void getDataFromRegistry(const char* key, char data[MAX_PATH])
     char buffer[MAX_PATH];
     DWORD cbDataSize = sizeof(buffer);
     HKEY hKey;
-    hr = RegOpenKeyExA(HKEY_LOCAL_MACHINE, REGISTRY_KEY_PCLOUD, 0, KEY_READ, &hKey);
+    hr = RegOpenKeyExA(HKEY_CURRENT_USER, REGISTRY_KEY_PCLOUD, 0, KEY_READ, &hKey);
     if (hr)
     {
         storeKey(key, "");
-        hr = RegOpenKeyExA(HKEY_LOCAL_MACHINE, REGISTRY_KEY_PCLOUD, 0, KEY_READ, &hKey);
+        hr = RegOpenKeyExA(HKEY_CURRENT_USER, REGISTRY_KEY_PCLOUD, 0, KEY_READ, &hKey);
     }
     if (!hr)
     {
         hr = RegQueryValueExA(hKey, key, NULL, NULL, (LPBYTE)data, &cbDataSize);
         RegCloseKey(hKey);
     }
+}
+
+static int getIntFromRegistry(const char* key)
+{
+    HRESULT hr;
+    DWORD val = 0;
+    DWORD cbDataSize = sizeof(val);
+    HKEY hKey;
+    hr = RegOpenKeyExA(HKEY_CURRENT_USER, REGISTRY_KEY_PCLOUD, 0, KEY_READ, &hKey);
+    if (!hr)
+    {
+        hr = RegQueryValueExA(hKey, key, NULL, NULL, (LPBYTE)&val, &cbDataSize);
+        RegCloseKey(hKey);
+        return val;
+    }
+    return 0;
 }
 
 char mountPoint[3] = "a:";
@@ -113,7 +139,12 @@ DWORD WINAPI ThreadProc(LPVOID lpParam)
 
     storeKey("lr", "");
 
-    mountPoint[0] = getFirstFreeDevice();
+    getDataFromRegistry(KEY_PATH, buff);
+    if (buff[0] && isFreeDevice(buff[0]))
+        mountPoint[0] = buff[0];
+    else
+        mountPoint[0] = getFirstFreeDevice();
+
     getDataFromRegistry(KEY_AUTH, auth);
     debug("auth:%s\n", auth);
     getDataFromRegistry(KEY_USER, username);
