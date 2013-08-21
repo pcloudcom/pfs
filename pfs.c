@@ -47,7 +47,8 @@ pfs_settings fs_settings={
   .cachesize=1024*1024*1024,
   .readaheadmin=64*1024,
   .readaheadmax=8*1024*1024,
-  .readaheadmaxsec=12
+  .readaheadmaxsec=12,
+  .usessl=0
 };
 
 static time_t cachesec=30;
@@ -65,8 +66,6 @@ static char *auth="Ec7QkEjFUnzZ7Z8W2YH1qLgxY7gGvTe09AH0i7V3kX";
 #else
 static char *auth="OcRE1WxMyzzZnZ0e96nIT5TIbed5RrDbNshpjWheN7";
 #endif
-
-static int usessl=0;
 
 uid_t myuid=0;
 gid_t mygid=0;
@@ -405,7 +404,7 @@ static void cancel_all_and_reconnect(){
   debug("cancel_all_and_reconnect - after write lock\n");
   api_close(sock);
   do{
-    if (usessl)
+    if (fs_settings.usessl)
       sock=api_connect_ssl();
     else
       sock=api_connect();
@@ -880,7 +879,7 @@ static void *diff_thread(void *ptr){
       debug("diff thread - reconnecting\n");
       api_close(diffsock);
       do {
-        if (usessl)
+        if (fs_settings.usessl)
           diffsock=api_connect_ssl();
         else
           diffsock=api_connect();
@@ -2501,8 +2500,8 @@ int pfs_main(int argc, char **argv, const pfs_params* params){
     debug("set pagesize - not implemented!\n");
   }
 
-  usessl = params->use_ssl;
-  if (usessl){
+  fs_settings.usessl = params->use_ssl;
+  if (fs_settings.usessl){
     debug("use ssl is ON\n");
     sock=api_connect_ssl();
     diffsock=api_connect_ssl();
