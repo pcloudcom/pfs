@@ -330,7 +330,7 @@ int do_fuse_loop(struct fuse *fs, bool mt)
 	ZeroMemory(dokanOptions, sizeof(DOKAN_OPTIONS));
 
     dokanOptions->Version = DOKAN_VERSION;
-	dokanOptions->Options = DOKAN_OPTION_KEEP_ALIVE;
+	dokanOptions->Options = DOKAN_OPTION_KEEP_ALIVE;// | DOKAN_OPTION_NETWORK;
 
 	mbstowcs(mount, fs->ch->mountpoint.c_str(), MAX_PATH);
 	dokanOptions->MountPoint = mount;
