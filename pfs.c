@@ -2649,7 +2649,7 @@ static int parse_pfs_param(int * i, int argc, char ** argv, pfs_params* params){
   }
   if ((!strcmp(argv[*i], "-c") || !strcmp(argv[*i], "--cache")) && *i+1<argc){
     ++*i;
-    params->cache_size=atoi(argv[*i])*1024*1024;
+    params->cache_size=((size_t)1024)*1024*atoi(argv[*i]);
     ++*i;
     return 1;
   }
