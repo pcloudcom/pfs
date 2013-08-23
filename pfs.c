@@ -2379,23 +2379,30 @@ static void init_cache(){
     size_t numpages, headersize;
     ssize_t i;
     cacheentry *entry;
-#if !defined(MAP_ANONYMOUS) && !defined(MAP_ANON)
     do{
-#endif
-    numpages=fs_settings.cachesize/fs_settings.pagesize;
-    headersize=((sizeof(cacheheader)+sizeof(cacheentry)*numpages+4095)/4096)*4096;
+      numpages=fs_settings.cachesize/fs_settings.pagesize;
+      headersize=((sizeof(cacheheader)+sizeof(cacheentry)*numpages+4095)/4096)*4096;
+#if defined(MAP_ANONYMOUS) || defined(MAP_ANON)
 #if defined(MAP_ANONYMOUS)
-    cachehead=(cacheheader *)mmap(NULL, fs_settings.cachesize+headersize, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
-#elif defined(MAP_ANON)
-    cachehead=(cacheheader *)mmap(NULL, fs_settings.cachesize+headersize, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANON, -1, 0);
+      cachehead=(cacheheader *)mmap(NULL, fs_settings.cachesize+headersize, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
 #else
-    cachehead=(cacheheader *)malloc(fs_settings.cachesize+headersize);
-    if (!cachehead){
-        if (fs_settings.cachesize > MIN_CACHE_SIZE)
-          fs_settings.cachesize/=2;
-        else
-          exit(-ENOMEM);
-    }
+      cachehead=(cacheheader *)mmap(NULL, fs_settings.cachesize+headersize, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANON, -1, 0);
+#endif
+      if (cachehead==MAP_FAILED){
+          if (fs_settings.cachesize > MIN_CACHE_SIZE)
+            fs_settings.cachesize/=2;
+          else
+            exit(1);
+      }
+    } while (cachehead==MAP_FAILED);
+#else
+      cachehead=(cacheheader *)malloc(fs_settings.cachesize+headersize);
+      if (!cachehead){
+          if (fs_settings.cachesize > MIN_CACHE_SIZE)
+            fs_settings.cachesize/=2;
+          else
+            exit(-ENOMEM);
+      }
     } while (!cachehead);
     debug("cache allocated size:%lu, page: %lu, pages: %lu\n",
           (unsigned long)fs_settings.cachesize, (unsigned long)fs_settings.pagesize, (unsigned long)numpages);
@@ -2546,9 +2553,9 @@ int pfs_main(int argc, char **argv, const pfs_params* params){
   if (params->auth)
     debug("auth %s\n", params->auth);
   if (params->cache_size)
-    debug("cache size: %u B\n", params->cache_size);
+    debug("cache size: %lu B\n", (unsigned long)params->cache_size);
   if (params->page_size)
-    debug("cache page size: %u B\n", params->page_size);
+    debug("cache page size: %lu B\n", (unsigned long)params->page_size);
 
 
   if (params->cache_size){
