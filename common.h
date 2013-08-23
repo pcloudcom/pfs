@@ -16,6 +16,7 @@ typedef struct {
   size_t readaheadmin;
   size_t readaheadmax;
   size_t readaheadmaxsec;
+  size_t timeout;
   int usessl;
 } pfs_settings;
 

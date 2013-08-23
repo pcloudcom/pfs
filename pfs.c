@@ -13,6 +13,7 @@
 #include "settings.h"
 
 #define SETTING_BUFF 4096
+#define INITIAL_COND_TIMEOUT_SEC 3
 
 #if !defined(MINGW) && !defined(_WIN32)
 #  include <sys/mman.h>
@@ -48,7 +49,8 @@ pfs_settings fs_settings={
   .readaheadmin=64*1024,
   .readaheadmax=8*1024*1024,
   .readaheadmaxsec=12,
-  .usessl=0
+  .usessl=0,
+  .timeout=15
 };
 
 static time_t cachesec=30;
@@ -300,6 +302,47 @@ static binresult *find_res(binresult *res, const char *key){
     do_cmd(_cmd, strlen(_cmd), _data, _datalen, __params, sizeof(__params)/sizeof(binparam), _callbackf, _callbackptr); \
   })
 
+static int pthread_cond_wait_sec(pthread_cond_t *cond, pthread_mutex_t *mutex, time_t sec){
+  struct timespec abstime;
+  // Sorry - this may not compile on win
+  clock_gettime(CLOCK_REALTIME, &abstime);
+  abstime.tv_sec+=sec;
+  return pthread_cond_timedwait(cond, mutex, &abstime);
+}
+
+static int pthread_cond_wait_timeout(pthread_cond_t *cond, pthread_mutex_t *mutex){
+  if (fs_settings.timeout)
+    return pthread_cond_wait_sec(cond, mutex, fs_settings.timeout);
+  else
+    return pthread_cond_wait(cond, mutex);
+}
+
+static int try_to_wake_diff(){
+  // TODO: write something here
+  return 0;
+}
+
+static int try_to_wake_data(){
+  // TODO: write something here
+  return 0;
+}
+
+static void remove_task(task *ptask){
+  task *t, **pt;
+  pthread_mutex_lock(&taskslock);
+  t=tasks;
+  pt=&tasks;
+  while (t){
+    if (t==ptask){
+      *pt=t->next;
+      break;
+    }
+    pt=&t->next;
+    t=t->next;
+  }
+  pthread_mutex_unlock(&taskslock);
+}
+  
 static binresult *do_cmd(const char *command, size_t cmdlen, const void *data, size_t datalen, binparam *params, size_t paramcnt,
                          task_callback callback, void *callbackptr){
   pthread_mutex_t mymutex;
@@ -307,6 +350,7 @@ static binresult *do_cmd(const char *command, size_t cmdlen, const void *data, s
   binparam nparams[paramcnt+1];
   task mytask, *ptask;
   binresult *res;
+  int cnt;
   debug("Do-cmd enter %s, %c\n", command, callback?'C':'D');
   pthread_mutex_init(&mymutex, NULL);
   pthread_cond_init(&mycond, NULL);
@@ -336,10 +380,16 @@ static binresult *do_cmd(const char *command, size_t cmdlen, const void *data, s
   nparams[0].paramtype=PARAM_NUM;
   nparams[0].un.num=ptask->taskid;
   pthread_mutex_lock(&writelock);
-  if (datalen)
-    res=do_send_command(sock, command, cmdlen, nparams, paramcnt+1, datalen, 0);
-  else
-    res=do_send_command(sock, command, cmdlen, nparams, paramcnt+1, -1, 0);
+  res=NULL;
+  cnt=0;
+  while (!res && cnt++<=3){
+    if (datalen)
+      res=do_send_command(sock, command, cmdlen, nparams, paramcnt+1, datalen, 0);
+    else
+      res=do_send_command(sock, command, cmdlen, nparams, paramcnt+1, -1, 0);
+    if (!res && try_to_wake_data())
+      break;
+  }
   if (res && datalen){
     if (writeall(sock, data, datalen)){
       debug("do_cmd - writeall failed\n");
@@ -351,13 +401,24 @@ static binresult *do_cmd(const char *command, size_t cmdlen, const void *data, s
   if (!callback){
    if (res){
      debug("##### Do-cmd wait %s\n", command);
-     pthread_cond_wait(&mycond, &mymutex);
+     if (pthread_cond_wait_sec(&mycond, &mymutex, INITIAL_COND_TIMEOUT_SEC) && (try_to_wake_data() || pthread_cond_wait_timeout(&mycond, &mymutex))){
+       pthread_mutex_unlock(&mymutex);
+       remove_task(ptask);
+       pthread_cond_destroy(&mycond);
+       pthread_mutex_destroy(&mymutex);
+       return NULL;      
+     }
      debug("##### Do-cmd got  %s\n", command);
    }
    pthread_mutex_unlock(&mymutex);
+   res=ptask->result;
+  }
+  else if (!res){
+    remove_task(ptask);
+    free(ptask);
+    callback(callbackptr, NULL);
   }
 
-  res = ptask->result;
   pthread_cond_destroy(&mycond);
   pthread_mutex_destroy(&mymutex);
   debug("Do-cmd exit %s, %p\n", command, res);
@@ -1131,6 +1192,18 @@ static openfile *new_file(){
   return f;
 }
 
+static int wait_tree_cond(){
+  treesleep++;
+  if (pthread_cond_wait_sec(&treecond, &treelock, INITIAL_COND_TIMEOUT_SEC)){
+    if (try_to_wake_diff() || pthread_cond_wait_timeout(&treecond, &treelock)){
+      treesleep--;
+      return -1;
+    }
+  }
+  treesleep--;
+  return 0;
+}
+
 static int fs_creat(const char *path, mode_t mode, struct fuse_file_info *fi){
   node *entry;
   binresult *res, *sub;
@@ -1183,10 +1256,9 @@ static int fs_creat(const char *path, mode_t mode, struct fuse_file_info *fi){
       entry->tfile.refcnt++;
       break;
     }
-    else{
-      treesleep++;
-      pthread_cond_wait(&treecond, &treelock);
-      treesleep--;
+    else if (wait_tree_cond()){
+      pthread_mutex_unlock(&treelock);
+      return NOT_CONNECTED_ERR;
     }
   }
   pthread_mutex_unlock(&treelock);
@@ -1763,7 +1835,11 @@ static int fs_read(const char *path, char *buf, size_t size, off_t offset,
       if (ce->waiting){
         ce->sleeping++;
 //        debug("waiting page=%u\n", ce->pageid);
-        pthread_cond_wait(&ce->cond, &pageslock);
+        if (pthread_cond_wait_sec(&ce->cond, &pageslock, INITIAL_COND_TIMEOUT_SEC) && (try_to_wake_data() || pthread_cond_wait_timeout(&ce->cond, &pageslock))){
+          ce->sleeping--;
+          pthread_mutex_unlock(&pageslock);
+          return NOT_CONNECTED_ERR;
+        }
 //        debug("got page=%u\n", ce->pageid);
         ce->sleeping--;
         of->streams[i].length*=2;
@@ -2102,15 +2178,15 @@ static int fs_mkdir(const char *path, mode_t mode){
   folderid=find_res(find_res(res, "metadata"), "folderid")->num;
   free(res);
   pthread_mutex_lock(&treelock);
-  treesleep++;
   while (1){
     entry=get_folder_by_id(folderid);
     if (entry)
       break;
-    else
-      pthread_cond_wait(&treecond, &treelock);
+    else if (wait_tree_cond()){
+      pthread_mutex_unlock(&treelock);
+      return NOT_CONNECTED_ERR;
+    }
   }
-  treesleep--;
   pthread_mutex_unlock(&treelock);
   return 0;
 }
@@ -2276,10 +2352,9 @@ static int fs_rename(const char *old_path, const char *new_path){
       if (get_node_by_path(new_path)){
         break;
       }
-      else{
-        treesleep++;
-        pthread_cond_wait(&treecond, &treelock);
-        treesleep--;
+      else if (wait_tree_cond()){
+        pthread_mutex_unlock(&treelock);
+        return NOT_CONNECTED_ERR;
       }
     }
     pthread_mutex_unlock(&treelock);
