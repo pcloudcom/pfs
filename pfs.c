@@ -293,7 +293,7 @@ static const char *hexdigits="0123456789abcdef";
     binparam __params[]={__VA_ARGS__}; \
     do_cmd(_cmd, strlen(_cmd), _data, _datalen, __params, sizeof(__params)/sizeof(binparam), _callbackf, _callbackptr); \
   })
-  
+
 static binresult *find_res(binresult *res, const char *key){
   int unsigned i;
   if (!res || res->type!=PARAM_HASH)
@@ -303,6 +303,50 @@ static binresult *find_res(binresult *res, const char *key){
       return res->hash[i].value;
   return NULL;
 }
+
+#if defined(MINGW) || defined(_WIN32)
+
+#define pipe(fds) _pipe(fds, 4096, _O_BINARY)
+
+#define DELTA_EPOCH_IN_MICROSECS  11644473600000000ULL
+
+struct timezone {
+  int  tz_minuteswest; /* minutes W of Greenwich */
+  int  tz_dsttime;     /* type of dst correction */
+};
+
+int gettimeofday(struct timeval *tv, struct timezone *tz){
+  FILETIME ft;
+  uint64_t tmpres = 0;
+  static int tzflag;
+
+  if (NULL != tv){
+    GetSystemTimeAsFileTime(&ft);
+
+    tmpres |= ft.dwHighDateTime;
+    tmpres <<= 32;
+    tmpres |= ft.dwLowDateTime;
+
+    /*converting file time to unix epoch*/
+    tmpres -= DELTA_EPOCH_IN_MICROSECS;
+    tmpres /= 10;  /*convert into microseconds*/
+    tv->tv_sec = (long)(tmpres / 1000000UL);
+    tv->tv_usec = (long)(tmpres % 1000000UL);
+  }
+
+  if (NULL != tz){
+    if (!tzflag){
+      _tzset();
+      tzflag++;
+    }
+    tz->tz_minuteswest = _timezone / 60;
+    tz->tz_dsttime = _daylight;
+  }
+
+  return 0;
+}
+
+#endif
 
 static int pthread_cond_wait_sec(pthread_cond_t *cond, pthread_mutex_t *mutex, time_t sec){
   struct timespec abstime;
@@ -382,7 +426,7 @@ static void remove_task(task *ptask){
   }
   pthread_mutex_unlock(&taskslock);
 }
-  
+
 static binresult *do_cmd(const char *command, size_t cmdlen, const void *data, size_t datalen, binparam *params, size_t paramcnt,
                          task_callback callback, void *callbackptr){
   pthread_mutex_t mymutex;
@@ -446,7 +490,7 @@ static binresult *do_cmd(const char *command, size_t cmdlen, const void *data, s
        remove_task(ptask);
        pthread_cond_destroy(&mycond);
        pthread_mutex_destroy(&mymutex);
-       return NULL;      
+       return NULL;
      }
      debug("##### Do-cmd got  %s\n", command);
    }
