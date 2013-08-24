@@ -306,9 +306,11 @@ static binresult *find_res(binresult *res, const char *key){
 
 static int pthread_cond_wait_sec(pthread_cond_t *cond, pthread_mutex_t *mutex, time_t sec){
   struct timespec abstime;
+  struct timeval now;
   // Sorry - this may not compile on win
-  clock_gettime(CLOCK_REALTIME, &abstime);
-  abstime.tv_sec+=sec;
+  gettimeofday(&now, NULL);
+  abstime.tv_sec=now.tv_sec+sec;
+  abstime.tv_nsec=now.tv_usec*1000UL;
   return pthread_cond_timedwait(cond, mutex, &abstime);
 }
 
