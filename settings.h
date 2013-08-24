@@ -8,6 +8,8 @@
 #define MIN_CACHE_SIZE 0
 #define MAX_CACHE_SIZE ((sizeof(size_t)<=4)? (size_t)2*1024*1024*1024 : 16L*1024*1024*1024)
 
+#define RECONNECT_TIMEOUT 15
+
 const char **list_settings();
 const struct stat *get_setting_stat(const char *name);
 int set_setting(const char *name, const char *val, size_t vallen);

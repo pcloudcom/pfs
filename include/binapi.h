@@ -78,6 +78,7 @@ typedef struct {
     do_send_command(sock, cmd, strlen(cmd), params, sizeof(params)/sizeof(binparam), dlen, 0); \
   })
 
+int hasdata(apisock *sock);
 int writeall(apisock *sock, const void *ptr, size_t len);
 ssize_t readall(apisock *sock, void *ptr, size_t len);
 binresult *get_result(apisock *sock);

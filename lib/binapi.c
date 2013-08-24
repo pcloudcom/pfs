@@ -45,6 +45,13 @@ static binresult BOOL_FALSE={PARAM_BOOL, 0, {0}};
 
 #define debug(...) do {FILE *d=fopen("/tmp/pfsfs.txt", "a"); if(!d)break; fprintf(d, __VA_ARGS__); fclose(d);} while (0)
 
+int hasdata(apisock *sock){
+  if (sock->ssl)
+    return SSL_pending(sock->ssl);
+  else
+    return 0;
+}
+
 static int writeallfd(int sock, const void *ptr, size_t len){
   ssize_t res;
   while (len){

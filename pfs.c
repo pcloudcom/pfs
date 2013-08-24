@@ -257,6 +257,8 @@ static pthread_cond_t treecond=PTHREAD_COND_INITIALIZER;
 static int unsigned treesleep=0;
 static int processingtask=0;
 
+static int diffwakefd, datawakefd;
+
 static time_t timeoff;
 
 static node *rootfolder;
@@ -267,16 +269,6 @@ static node *folders[HASH_SIZE];
 static apisock *sock, *diffsock;
 
 static const char *hexdigits="0123456789abcdef";
-
-static binresult *find_res(binresult *res, const char *key){
-  int unsigned i;
-  if (!res || res->type!=PARAM_HASH)
-    return NULL;
-  for (i=0; i<res->length; i++)
-    if (!strcmp(res->hash[i].key, key))
-      return res->hash[i].value;
-  return NULL;
-}
 
 #define cmd(_cmd, ...) \
   ({\
@@ -301,6 +293,16 @@ static binresult *find_res(binresult *res, const char *key){
     binparam __params[]={__VA_ARGS__}; \
     do_cmd(_cmd, strlen(_cmd), _data, _datalen, __params, sizeof(__params)/sizeof(binparam), _callbackf, _callbackptr); \
   })
+  
+static binresult *find_res(binresult *res, const char *key){
+  int unsigned i;
+  if (!res || res->type!=PARAM_HASH)
+    return NULL;
+  for (i=0; i<res->length; i++)
+    if (!strcmp(res->hash[i].key, key))
+      return res->hash[i].value;
+  return NULL;
+}
 
 static int pthread_cond_wait_sec(pthread_cond_t *cond, pthread_mutex_t *mutex, time_t sec){
   struct timespec abstime;
@@ -317,13 +319,49 @@ static int pthread_cond_wait_timeout(pthread_cond_t *cond, pthread_mutex_t *mute
     return pthread_cond_wait(cond, mutex);
 }
 
+// needs to returns connected pipes (or sockets), generally pipefd[0] will be used for reading and pipefd[1] for writing
+static int get_pipe(int pipefd[2]){
+  return pipe(pipefd);
+}
+
+// should work on all platforms with select
+static int ready_read(int cnt, int *socks, struct timeval *timeout){
+  fd_set rfds;
+  int max, i;
+  FD_ZERO(&rfds);
+  max=0;
+  for (i=0; i<cnt; i++){
+    if (socks[i]>max)
+      max=socks[i];
+    FD_SET(socks[i], &rfds);
+  }
+  max++;
+  if (select(max, &rfds, NULL, NULL, timeout)<=0)
+    return -1;
+  for (i=0; i<cnt; i++)
+    if (FD_ISSET(socks[i], &rfds))
+      return i;
+  // should not happen
+  return 0;
+}
+
+
+// read & write may need to be send/recv on some platforms, on ones that support pipe, send/recv are not appropriate
+ssize_t pipe_read(int fd, void *buf, size_t count){
+  return read(fd, buf, count);
+}
+
+ssize_t pipe_write(int fd, const void *buf, size_t count){
+  return write(fd, buf, count);
+}
+
 static int try_to_wake_diff(){
-  // TODO: write something here
+  pipe_write(diffwakefd, "W", 1);
   return 0;
 }
 
 static int try_to_wake_data(){
-  // TODO: write something here
+  pipe_write(datawakefd, "w", 1);
   return 0;
 }
 
@@ -519,13 +557,48 @@ static void resume_tasks(){
   pthread_mutex_unlock(&calllock);
 }
 
+static void reconnect_if_needed(){
+  binresult *res;
+  struct timeval timeout;
+  debug("data thread awake\n");
+  res=send_command_nb(sock, "nop");
+  if (!res){
+    debug("reconnecting data because write failed'n");
+    return cancel_all_and_reconnect();
+  }
+  timeout.tv_sec=RECONNECT_TIMEOUT;
+  timeout.tv_usec=0;
+  if (ready_read(1, &sock->sock, &timeout)!=0){
+    debug("reconnecting data because socket timeouted\n");
+    return cancel_all_and_reconnect();
+  }
+  debug("no reconnection needed, socket alive\n");
+}
 
 static void *receive_thread(void *ptr){
   binresult *res, *id, *sub;
   task *t, **pt;
-  int hasdata;
+  int wakefds[2], monitorfds[2], r, rhasdata;
+  char b;
+  if (get_pipe(wakefds))
+    return NULL;
+  datawakefd=wakefds[1];
+  monitorfds[1]=wakefds[0];
   while (1){
-    res=get_result(sock);
+    monitorfds[0]=sock->sock;
+    if (hasdata(sock))
+      r=0;
+    else
+      r=ready_read(2, monitorfds, NULL);
+    if (r==0)
+      res=get_result(sock);
+    else if (r==1){
+      pipe_read(wakefds[0], &b, 1);
+      reconnect_if_needed();
+      continue;
+    }
+    else
+      break; // should not happen
     if (!res){
       cancel_all_and_reconnect();
       continue;
@@ -556,20 +629,20 @@ static void *receive_thread(void *ptr){
       continue;
     }
     sub=find_res(res, "data");
-    hasdata=sub && sub->type==PARAM_DATA;
+    rhasdata=sub && sub->type==PARAM_DATA;
     /* !!! IMPORTANT !!!
      * if we have TASK_TYPE_WAIT, t is on the stack of the thread waiting on t->cond, therefore no free
      * if we have TASK_TYPE_CALL, t is allcated and we need to free. callback does not have to free the result
      */
     if (t->type==TASK_TYPE_WAIT){
       t->result=res;
-      if (hasdata){
+      if (rhasdata){
         pthread_mutex_lock(&datamutex);
       }
       pthread_mutex_lock(t->mutex);
       pthread_cond_signal(t->cond);
       pthread_mutex_unlock(t->mutex);
-      if (hasdata){
+      if (rhasdata){
         pthread_cond_wait(&datacond, &datamutex);
         pthread_mutex_unlock(&datamutex);
       }
@@ -932,10 +1005,30 @@ static void *diff_thread(void *ptr){
   uint64_t diffid;
   binresult *res, *sub, *entries, *entry;
   int unsigned i;
+  int wakefds[2], monitorfds[2], r;
+  char b;
+  if (get_pipe(wakefds))
+    return NULL;
   diffid=0;
+  diffwakefd=wakefds[1];
+  monitorfds[0]=diffsock->sock;
+  monitorfds[1]=wakefds[0];
   while (1){
 //    debug("send diff\n");
-    res=send_command(diffsock, "diff", P_NUM("diffid", diffid), P_BOOL("block", 1), P_STR("timeformat", "timestamp"));
+    res=send_command_nb(diffsock, "diff", P_NUM("diffid", diffid), P_BOOL("block", 1), P_STR("timeformat", "timestamp"));
+    if (res){
+      if (hasdata(diffsock))
+        r=0;
+      else
+        r=ready_read(2, monitorfds, NULL);
+      if (r==0)
+        res=get_result(diffsock);
+      else if (r==1){
+        debug("diff got wake - reconnecting\n");
+        pipe_read(wakefds[0], &b, 1);
+        res=NULL;
+      }
+    }
     if (!res){
       debug("diff thread - reconnecting\n");
       api_close(diffsock);
@@ -953,6 +1046,7 @@ static void *diff_thread(void *ptr){
       sub=find_res(res, "result");
       if (!sub || sub->type!=PARAM_NUM || sub->num==0){
         free(res);
+        monitorfds[0]=diffsock->sock;
         continue;
       }
       free(res);
