@@ -4,7 +4,11 @@
 #define REGISTRY_KEY_PCLOUD    "SOFTWARE\\PCloud\\pCloud"
 
 #ifndef debug
+#ifdef DEBUG
 #   define debug(...) do {FILE *d=fopen("/tmp/pfs_srv.log", "a"); if (!d) break; fprintf(d, __VA_ARGS__); fclose(d);} while (0)
+#else
+#   define debug(...)
+#endif
 #endif
 
 typedef struct
