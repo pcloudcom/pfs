@@ -3,6 +3,7 @@
 #include <inttypes.h>
 #include <pthread.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <unistd.h>
 #include <stdio.h>
 #include <time.h>
@@ -710,6 +711,32 @@ static void *receive_thread(void *ptr){
   return NULL;
 }
 
+static void send_event_message(uint32_t utype, ...){
+  struct iovec iovs[64];
+  va_list ap;
+  const char *str;
+  size_t len, msglen;
+  uint32_t ulen;
+  int o;
+  va_start(ap, utype);
+  msglen=0;
+  o=2;
+  while ((str=va_arg(ap, const char *))) {
+    len=strlen(str);
+    msglen+=len;
+    iovs[o].iov_base=(char *)str;
+    iovs[o].iov_len=len;
+    o++;
+  }
+  va_end(ap);  
+  ulen=msglen;
+  iovs[0].iov_base=&utype;
+  iovs[0].iov_len=sizeof(utype);
+  iovs[1].iov_base=&ulen;
+  iovs[1].iov_len=sizeof(ulen);
+  event_writev(iovs, o);
+}
+
 static node *get_file_by_id(uint64_t fileid){
   node *f;
   f=files[fileid%HASH_SIZE];
@@ -1025,25 +1052,63 @@ static void diff_delete_file(binresult *meta, time_t mtime){
 }
 
 static void process_diff(binresult *diff){
-  binresult *event, *meta;
+  binresult *event, *meta, *sn;
+  const char *estr, *snstr;
   time_t tm;
   event=find_res(diff, "event");
   meta=find_res(diff, "metadata");
   tm=find_res(diff, "time")->num+timeoff;
 //  debug("diff -> %s\n", event->str);
-  if (event && event->type==PARAM_STR && meta && meta->type==PARAM_HASH){
-    if (!strcmp(event->str, "createfolder"))
+  if (!event || event->type!=PARAM_STR)
+    return;
+  estr=event->str;
+  if (meta && meta->type==PARAM_HASH){
+    if (!strcmp(estr, "createfolder"))
       diff_create_folder(meta, tm);
-    else if (!strcmp(event->str, "createfile"))
+    else if (!strcmp(estr, "createfile"))
       diff_create_file(meta, tm);
-    else if (!strcmp(event->str, "modifyfile"))
+    else if (!strcmp(estr, "modifyfile"))
       diff_modifyfile_file(meta, tm);
-    else if (!strcmp(event->str, "modifyfolder"))
+    else if (!strcmp(estr, "modifyfolder"))
       diff_modifyfile_folder(meta, tm);
-    else if (!strcmp(event->str, "deletefolder"))
+    else if (!strcmp(estr, "deletefolder"))
       diff_delete_folder(meta, tm);
-    else if (!strcmp(event->str, "deletefile"))
+    else if (!strcmp(estr, "deletefile"))
       diff_delete_file(meta, tm);
+    return;
+  }
+  meta=find_res(diff, "share");
+  if (meta && meta->type==PARAM_HASH){
+    int unlock=0;
+    if ((sn=find_res(meta, "sharename")))
+      snstr=sn->str;
+    else if ((sn=find_res(meta, "folderid"))){
+      pthread_mutex_lock(&treelock);
+      node *f=get_folder_by_id(sn->num);
+      if (!f){
+        pthread_mutex_unlock(&treelock);
+        return;
+      }
+      snstr=f->name;
+      unlock=1;
+    }
+    else
+      return;
+    if (!strcmp(estr, "requestsharein"))
+      send_event_message(1, "User ", find_res(meta, "frommail")->str, " shared folder \"", snstr, "\" with you.", NULL);
+    else if (!strcmp(estr, "acceptedshareout"))
+      send_event_message(2, "User ", find_res(meta, "tomail")->str, " accepted your share of folder \"", snstr, "\".", NULL);
+    else if (!strcmp(estr, "declinedshareout"))
+      send_event_message(2, "User ", find_res(meta, "tomail")->str, " rejected your share of folder \"", snstr, "\".", NULL);
+    else if (!strcmp(estr, "cancelledsharein"))
+      send_event_message(2, "User ", find_res(meta, "frommail")->str, " canceled share of folder \"", snstr, "\" with you.", NULL);
+    else if (!strcmp(estr, "removedsharein"))
+      send_event_message(2, "User ", find_res(meta, "frommail")->str, " stopped share of folder \"", snstr, "\" with you.", NULL);
+    else if (!strcmp(estr, "modifiedsharein"))
+      send_event_message(2, "User ", find_res(meta, "frommail")->str, " changed your access permissions to folder \"", snstr, "\".", NULL);
+    if (unlock)
+      pthread_mutex_unlock(&treelock);
+    return;
   }
 }
 

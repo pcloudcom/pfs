@@ -5,10 +5,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <pthread.h>
 #include "common.h"
 #include "settings.h"
 
 #define SETTINGSCNT (sizeof(settings)/sizeof(setting))
+#define EVENT_EXPIRE 3600
 
 typedef void (*get_setting_func)(char *, size_t *);
 typedef int (*set_setting_func)(const char *, size_t);
@@ -17,7 +19,19 @@ typedef struct {
   const char *name;
   get_setting_func get;
   set_setting_func set;
+  char support_stat;
 } setting;
+
+typedef struct _event{
+  struct _event *next;
+  void *ptr;
+  size_t sz;
+  time_t tm;
+} event;
+
+static event *events=NULL;
+static event **lastevent=&events;
+static pthread_mutex_t events_mutex=PTHREAD_MUTEX_INITIALIZER;
 
 static void setting_get_size_t(char *data, size_t *sz, size_t num){
   *sz=snprintf(data, *sz, "%lu\n", (unsigned long)num);
@@ -104,13 +118,48 @@ static int set_use_ssl(const char *str, size_t len){
   return 0;
 }
 
+static void update_events_stat();
+
+static void get_events(char *data, size_t *sz){
+  event *e;
+  pthread_mutex_lock(&events_mutex);
+  if (events){
+    if (events->sz<=*sz){
+      e=events;
+      events=e->next;
+      if (!events)
+        lastevent=&events;
+      update_events_stat();
+      pthread_mutex_unlock(&events_mutex);
+      memcpy(data, e->ptr, e->sz);
+      *sz=e->sz;
+      free(e);
+      return;
+    }
+    else{
+      memcpy(data, events->ptr, *sz);
+      events->ptr+=*sz;
+      events->sz-=*sz;
+    }
+  }
+  else
+    *sz=0;
+  update_events_stat();
+  pthread_mutex_unlock(&events_mutex);
+}
+
+static int set_events(const char *str, size_t len){
+  return -EINVAL;
+}
+
 static setting settings[]={
-  {"page_size", get_page_size, set_page_size},
-  {"cache_size", get_cache_size, set_cache_size},
-  {"readahead_min", get_readahead_min, set_readahead_min},
-  {"readahead_max", get_readahead_max, set_readahead_max},
-  {"readahead_max_sec", get_readahead_max_sec, set_readahead_max_sec},
-  {"use_ssl", get_use_ssl, set_use_ssl}
+  {"page_size", get_page_size, set_page_size, 1},
+  {"cache_size", get_cache_size, set_cache_size, 1},
+  {"readahead_min", get_readahead_min, set_readahead_min, 1},
+  {"readahead_max", get_readahead_max, set_readahead_max, 1},
+  {"readahead_max_sec", get_readahead_max_sec, set_readahead_max_sec, 1},
+  {"use_ssl", get_use_ssl, set_use_ssl, 1},
+  {"events", get_events, set_events, 0}
 };
 
 static const char *setting_names[SETTINGSCNT+1];
@@ -129,7 +178,10 @@ static void init_settings(){
   for (i=0; i<SETTINGSCNT; i++){
     setting_names[i]=settings[i].name;
     sz=sizeof(buff);
-    settings[i].get(buff, &sz);
+    if (settings[i].support_stat)
+      settings[i].get(buff, &sz);
+    else
+      sz=0;
     setting_stat[i].st_ctime=tm;
     setting_stat[i].st_mtime=tm;
     setting_stat[i].st_mode=S_IFREG | 0644;
@@ -154,6 +206,9 @@ static void init_settings(){
 #endif
   settings_stat.st_uid=myuid;
   settings_stat.st_gid=mygid;
+  pthread_mutex_lock(&events_mutex);
+  update_events_stat();
+  pthread_mutex_unlock(&events_mutex);
   names_init=1;
 }
 
@@ -213,4 +268,52 @@ int get_setting(const char *name, char *val, size_t *vallen){
   }
   else
     return -ENOENT;
+}
+
+void event_writev(const struct iovec *iov, int iovcnt){
+  size_t ssize;
+  event *e;
+  void *p, *cp;
+  time_t tm;
+  int i;
+  ssize=0;
+  for (i=0; i<iovcnt; i++)
+    ssize+=iov[i].iov_len;
+  e=malloc(sizeof(event)+ssize);
+  p=e+1;
+  e->next=NULL;
+  e->ptr=p;
+  e->sz=ssize;
+  cp=p;
+  for (i=0; i<iovcnt; i++){
+    memcpy(cp, iov[i].iov_base, iov[i].iov_len);
+    cp+=iov[i].iov_len;
+  }
+  time(&tm);
+  e->tm=tm;
+  pthread_mutex_lock(&events_mutex);
+  *lastevent=e;
+  lastevent=&e->next;
+  while (events->tm<tm-EVENT_EXPIRE){
+    e=events;
+    events=e->next;
+    free(e);
+  }
+  update_events_stat();
+  pthread_mutex_unlock(&events_mutex);
+}
+
+static void update_events_stat(){
+  size_t sz;
+  int id=get_setting_id("events");
+  if (id!=-1){
+    if (events)
+      sz=events->sz;
+    else
+      sz=0;
+    setting_stat[id].st_size=sz;
+#if !defined(MINGW) && !defined(_WIN32)
+    setting_stat[id].st_blocks=(sz+511)/512;
+#endif
+  }
 }

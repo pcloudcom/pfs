@@ -14,5 +14,6 @@ const char **list_settings();
 const struct stat *get_setting_stat(const char *name);
 int set_setting(const char *name, const char *val, size_t vallen);
 int get_setting(const char *name, char *val, size_t *vallen);
+void event_writev(const struct iovec *iov, int iovcnt);
 
 #endif
