@@ -1101,11 +1101,11 @@ static void process_diff(binresult *diff){
     else if (!strcmp(estr, "declinedshareout"))
       send_event_message(2, "User ", find_res(meta, "tomail")->str, " rejected your share of folder \"", snstr, "\".", NULL);
     else if (!strcmp(estr, "cancelledsharein"))
-      send_event_message(2, "User ", find_res(meta, "frommail")->str, " canceled share of folder \"", snstr, "\" with you.", NULL);
+      send_event_message(0, "User ", find_res(meta, "frommail")->str, " canceled share of folder \"", snstr, "\" with you.", NULL);
     else if (!strcmp(estr, "removedsharein"))
-      send_event_message(2, "User ", find_res(meta, "frommail")->str, " stopped share of folder \"", snstr, "\" with you.", NULL);
+      send_event_message(0, "User ", find_res(meta, "frommail")->str, " stopped share of folder \"", snstr, "\" with you.", NULL);
     else if (!strcmp(estr, "modifiedsharein"))
-      send_event_message(2, "User ", find_res(meta, "frommail")->str, " changed your access permissions to folder \"", snstr, "\".", NULL);
+      send_event_message(0, "User ", find_res(meta, "frommail")->str, " changed your access permissions to folder \"", snstr, "\".", NULL);
     if (unlock)
       pthread_mutex_unlock(&treelock);
     return;
@@ -1142,6 +1142,7 @@ static void *diff_thread(void *ptr){
     }
     if (!res){
       debug("diff thread - reconnecting\n");
+      send_event_message(8, NULL);
       api_close(diffsock);
       do {
         if (fs_settings.usessl)
@@ -1161,6 +1162,7 @@ static void *diff_thread(void *ptr){
         continue;
       }
       free(res);
+      send_event_message(8+4, NULL);
       debug("diff thread - reconnected!\n");
       return NULL;
     }
