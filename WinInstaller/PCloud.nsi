@@ -50,7 +50,7 @@ Section "Install"
   createShortCut "$SMPROGRAMS\PCloud\uninstall.lnk" "$INSTDIR\pfs-uninst.exe" "" ""
 
   MessageBox MB_YESNO|MB_ICONQUESTION "Do you want PCloud control application to start with windows?" IDNO NoStartup
-    createShortCut "$SMPROGRAMS\Startup\pCloud.lnk" "$INSTDIR\pCloud.exe" "" ""
+    createShortCut "$SMSTARTUP\pCloud.lnk" "$INSTDIR\pCloud.exe" "" ""
   NoStartup:
   
   MessageBox MB_YESNO|MB_ICONQUESTION "A reboot is required. Do you want to reboot now?" IDNO NoReboot
@@ -64,8 +64,8 @@ UninstallText "This will uninstall PCloud. Hit next to continue."
 
 Section "Uninstall"
 
+  Delete "$SMSTARTUP\pCloud.lnk"
   Delete "$SMPROGRAMS\PCloud\pCloud.lnk"
-  Delete "$SMPROGRAMS\Startup\pCloud.lnk"
   Delete "$SMPROGRAMS\PCloud\uninstall.lnk"
   RMDir "$SMPROGRAMS\PCloud"
 

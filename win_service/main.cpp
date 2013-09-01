@@ -60,7 +60,7 @@ BOOL ReportStatusToSCMgr(DWORD dwCurrentState, DWORD dwWin32ExitCode, DWORD dwWa
 static char getFirstFreeDevice()
 {
     DWORD devices = GetLogicalDrives();
-    for (int i = 4; i < 32; ++i)
+    for (int i = 3; i < 32; ++i)
         if ((devices & (1<<i))==0)
             return i + 'A';
     return 0;
