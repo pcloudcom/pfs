@@ -72,7 +72,7 @@ static bool isFreeDevice(char letter)
     if (letter >='a' && letter <= 'z')
         letter = letter - 'a' + 'A';
     if (letter >= 'A' && letter <= 'Z')
-        return (device & (1<<(letter-'A'))) == 0;
+        return (devices & (1<<(letter-'A'))) == 0;
     return false;
 }
 

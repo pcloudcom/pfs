@@ -3,6 +3,15 @@
 
 #include "common.h"
 
+#if defined(MINGW) || defined(_WIN32)
+struct iovec
+{
+  void*   iov_base;
+  size_t  iov_len;
+};
+
+#endif
+
 #define SETTINGS_PATH "/.pfs_settings"
 
 #define MIN_CACHE_SIZE 0

@@ -30,6 +30,8 @@
 #define index(str, c) strchr(str, c)
 #define rindex(str, c) strrchr(str, c)
 
+int dumb_socketpair(SOCKET socks[2], int make_overlapped);
+
 #ifndef ENOTCONN
 #   define ENOTCONN        107
 #endif
@@ -65,7 +67,7 @@ static const char *cachefile=NULL;
 static uint64_t quota, usedquota;
 
 #if !defined(MINGW) && !defined(_WIN32)
-static char *auth="Ec7QkEjFUnzZ7Z8W2YH1qLgxY7gGvTe09AH0i7V3kX";
+static char *auth="";
 #else
 static char *auth="OcRE1WxMyzzZnZ0e96nIT5TIbed5RrDbNshpjWheN7";
 #endif
@@ -307,8 +309,6 @@ static binresult *find_res(binresult *res, const char *key){
 
 #if defined(MINGW) || defined(_WIN32)
 
-#define pipe(fds) _pipe(fds, 4096, _O_BINARY)
-
 #define DELTA_EPOCH_IN_MICROSECS  11644473600000000ULL
 
 struct timezone {
@@ -319,7 +319,7 @@ struct timezone {
 int gettimeofday(struct timeval *tv, struct timezone *tz){
   FILETIME ft;
   uint64_t tmpres = 0;
-  static int tzflag;
+  static int tzflag = 0;
 
   if (NULL != tv){
     GetSystemTimeAsFileTime(&ft);
@@ -328,9 +328,9 @@ int gettimeofday(struct timeval *tv, struct timezone *tz){
     tmpres <<= 32;
     tmpres |= ft.dwLowDateTime;
 
+    tmpres /= 10;  /*convert into microseconds*/
     /*converting file time to unix epoch*/
     tmpres -= DELTA_EPOCH_IN_MICROSECS;
-    tmpres /= 10;  /*convert into microseconds*/
     tv->tv_sec = (long)(tmpres / 1000000UL);
     tv->tv_usec = (long)(tmpres % 1000000UL);
   }
@@ -368,7 +368,11 @@ static int pthread_cond_wait_timeout(pthread_cond_t *cond, pthread_mutex_t *mute
 
 // needs to returns connected pipes (or sockets), generally pipefd[0] will be used for reading and pipefd[1] for writing
 static int get_pipe(int pipefd[2]){
+#ifdef WIN32
+  return dumb_socketpair((SOCKET*)pipefd, 1);
+#else
   return pipe(pipefd);
+#endif
 }
 
 // should work on all platforms with select
@@ -383,8 +387,9 @@ static int ready_read(int cnt, int *socks, struct timeval *timeout){
     FD_SET(socks[i], &rfds);
   }
   max++;
-  if (select(max, &rfds, NULL, NULL, timeout)<=0)
+  if (select(max, &rfds, NULL, NULL, timeout)<=0){
     return -1;
+  }
   for (i=0; i<cnt; i++)
     if (FD_ISSET(socks[i], &rfds))
       return i;
@@ -395,11 +400,19 @@ static int ready_read(int cnt, int *socks, struct timeval *timeout){
 
 // read & write may need to be send/recv on some platforms, on ones that support pipe, send/recv are not appropriate
 ssize_t pipe_read(int fd, void *buf, size_t count){
+#ifdef WIN32
+  return recv(fd, buf, count, 0);
+#else
   return read(fd, buf, count);
+#endif // WIN32
 }
 
 ssize_t pipe_write(int fd, const void *buf, size_t count){
+#ifdef WIN32
+  return send(fd, buf, count, 0);
+#else
   return write(fd, buf, count);
+#endif // WIN32
 }
 
 static int try_to_wake_diff(){
@@ -728,7 +741,7 @@ static void send_event_message(uint32_t utype, ...){
     iovs[o].iov_len=len;
     o++;
   }
-  va_end(ap);  
+  va_end(ap);
   ulen=msglen;
   iovs[0].iov_base=&utype;
   iovs[0].iov_len=sizeof(utype);
