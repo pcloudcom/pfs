@@ -109,7 +109,7 @@ static void getDataFromRegistry(const char* key, char data[MAX_PATH])
     }
 }
 
-static int getIntFromRegistry(const char* key)
+int getIntFromRegistry(const char* key)
 {
     HRESULT hr;
     DWORD val = 0;
