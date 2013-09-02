@@ -60,7 +60,7 @@ BOOL ReportStatusToSCMgr(DWORD dwCurrentState, DWORD dwWin32ExitCode, DWORD dwWa
 static char getFirstFreeDevice()
 {
     DWORD devices = GetLogicalDrives();
-    for (int i = 4; i < 32; ++i)
+    for (int i = 3; i < 32; ++i)
         if ((devices & (1<<i))==0)
             return i + 'A';
     return 0;
@@ -72,7 +72,7 @@ static bool isFreeDevice(char letter)
     if (letter >='a' && letter <= 'z')
         letter = letter - 'a' + 'A';
     if (letter >= 'A' && letter <= 'Z')
-        return (device & (1<<(letter-'A'))) == 0;
+        return (devices & (1<<(letter-'A'))) == 0;
     return false;
 }
 
@@ -109,7 +109,7 @@ static void getDataFromRegistry(const char* key, char data[MAX_PATH])
     }
 }
 
-static int getIntFromRegistry(const char* key)
+int getIntFromRegistry(const char* key)
 {
     HRESULT hr;
     DWORD val = 0;
