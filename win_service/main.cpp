@@ -137,13 +137,13 @@ DWORD WINAPI ThreadProc(LPVOID lpParam)
     size_t cachesize;
     char* argv[2] = {(char *)"pfs", mountPoint};
 
-    storeKey("lr", "");
-
     getDataFromRegistry(KEY_PATH, buff);
     if (buff[0] && isFreeDevice(buff[0]))
         mountPoint[0] = buff[0];
-    else
+    else{
         mountPoint[0] = getFirstFreeDevice();
+        storeKey(KEY_PATH, buff);
+    }
 
     getDataFromRegistry(KEY_AUTH, auth);
     debug("auth:%s\n", auth);
@@ -180,12 +180,10 @@ DWORD WINAPI ThreadProc(LPVOID lpParam)
     int res = pfs_main(2, argv, &params);
     if (res == ENOTCONN)
     {
-        storeKey("lr", "1");
         debug("Send NotConnected msg\n");
     }
     else if (res == EACCES)
     {
-        storeKey("lr", "2");
         debug("Send Access denied msg\n");
     }
     return res;
