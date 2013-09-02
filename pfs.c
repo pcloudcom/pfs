@@ -1159,11 +1159,12 @@ static void *diff_thread(void *ptr){
       if (!sub || sub->type!=PARAM_NUM || sub->num==0){
         free(res);
         monitorfds[0]=diffsock->sock;
+        send_event_message(8+4, NULL);
+        debug("diff thread - reconnected!\n");
         continue;
       }
       free(res);
-      send_event_message(8+4, NULL);
-      debug("diff thread - reconnected!\n");
+      debug("diff thread - failed to recoonect, quitting!\n");
       return NULL;
     }
     sub=find_res(res, "result");
