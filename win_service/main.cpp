@@ -80,7 +80,7 @@ static void storeKey(LPCSTR key, const char * val)
 {
     HRESULT hr;
     HKEY hKey;
-    hr = RegCreateKeyExA(HKEY_CURRENT_USER, REGISTRY_KEY_PCLOUD, 0, NULL, 0,
+    hr = RegCreateKeyExA(HKEY_LOCAL_MACHINE, REGISTRY_KEY_PCLOUD, 0, NULL, 0,
                         KEY_ALL_ACCESS, NULL, &hKey, NULL);
     if (!hr)
     {
@@ -96,11 +96,11 @@ static void getDataFromRegistry(const char* key, char data[MAX_PATH])
     char buffer[MAX_PATH];
     DWORD cbDataSize = sizeof(buffer);
     HKEY hKey;
-    hr = RegOpenKeyExA(HKEY_CURRENT_USER, REGISTRY_KEY_PCLOUD, 0, KEY_READ, &hKey);
+    hr = RegOpenKeyExA(HKEY_LOCAL_MACHINE, REGISTRY_KEY_PCLOUD, 0, KEY_READ, &hKey);
     if (hr)
     {
         storeKey(key, "");
-        hr = RegOpenKeyExA(HKEY_CURRENT_USER, REGISTRY_KEY_PCLOUD, 0, KEY_READ, &hKey);
+        hr = RegOpenKeyExA(HKEY_LOCAL_MACHINE, REGISTRY_KEY_PCLOUD, 0, KEY_READ, &hKey);
     }
     if (!hr)
     {
@@ -115,7 +115,7 @@ int getIntFromRegistry(const char* key)
     DWORD val = 0;
     DWORD cbDataSize = sizeof(val);
     HKEY hKey;
-    hr = RegOpenKeyExA(HKEY_CURRENT_USER, REGISTRY_KEY_PCLOUD, 0, KEY_READ, &hKey);
+    hr = RegOpenKeyExA(HKEY_LOCAL_MACHINE, REGISTRY_KEY_PCLOUD, 0, KEY_READ, &hKey);
     if (!hr)
     {
         hr = RegQueryValueExA(hKey, key, NULL, NULL, (LPBYTE)&val, &cbDataSize);
@@ -146,14 +146,12 @@ DWORD WINAPI ThreadProc(LPVOID lpParam)
     }
 
     getDataFromRegistry(KEY_AUTH, auth);
+    storeKey(KEY_AUTH, "");
     debug("auth:%s\n", auth);
-    getDataFromRegistry(KEY_USER, username);
-    debug("user:%s\n", username);
-    getDataFromRegistry(KEY_PASS, password);
-    debug("pass:%s\n", password);
     getDataFromRegistry(KEY_CACHE_SIZE, buff);
     cachesize = (size_t)atol(buff);
     debug("cache size:%u\n", cachesize);
+
     // Stored data is in MB - convert to bytes
     if (cachesize > 0 && cachesize < 3000)
         cachesize *= 1024*1024;
@@ -279,7 +277,7 @@ void CmdInstallService(BOOL Start)
         schService = CreateService(schSCManager, SZSERVICENAME, SZSERVICEDISPLAYNAME,
             SERVICE_ALL_ACCESS,
             SERVICE_WIN32_OWN_PROCESS  | SERVICE_INTERACTIVE_PROCESS,
-            SERVICE_AUTO_START,
+            SERVICE_DEMAND_START,
             SERVICE_ERROR_NORMAL,
             szPath, NULL, NULL, NULL, NULL, NULL);
 
