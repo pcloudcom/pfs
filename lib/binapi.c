@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <errno.h>
+#include "pfs.h"
 #include "binapi.h"
 
 #define RPARAM_STR1  0
@@ -42,8 +43,6 @@ static SSL_CTX *globalctx=NULL;
 
 static binresult BOOL_TRUE={PARAM_BOOL, 0, {1}};
 static binresult BOOL_FALSE={PARAM_BOOL, 0, {0}};
-
-#define debug(...) do {FILE *d=fopen("/tmp/pfsfs.txt", "a"); if(!d)break; fprintf(d, __VA_ARGS__); fclose(d);} while (0)
 
 int hasdata(apisock *sock){
   if (sock->ssl)
