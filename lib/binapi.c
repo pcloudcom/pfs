@@ -498,18 +498,29 @@ static int connect_socket(const char *host, const char *port){
 #endif // defined
   sock=connect_res(res);
   freeaddrinfo(res);
-#ifdef TCP_KEEPCNT
   if (sock!=-1){
     int sock_opt=1;
+#if defined(SO_KEEPALIVE) && defined(SOL_SOCKET)
     setsockopt(sock, SOL_SOCKET, SO_KEEPALIVE, &sock_opt, sizeof(sock_opt));
+#endif
+#if defined(TCP_KEEPALIVE) && defined(IPPROTO_TCP)
+    setsockopt(sock, IPPROTO_TCP, TCP_KEEPALIVE, &sock_opt, sizeof(sock_opt));
+#endif
+#if defined(SOL_TCP)
+#if defined(TCP_KEEPCNT)
     sock_opt=3;
     setsockopt(sock, SOL_TCP, TCP_KEEPCNT, &sock_opt, sizeof(sock_opt));
+#endif
+#if defined(TCP_KEEPIDLE)
     sock_opt=60;
     setsockopt(sock, SOL_TCP, TCP_KEEPIDLE, &sock_opt, sizeof(sock_opt));
+#endif
+#if defined(TCP_KEEPINTVL)
     sock_opt=20;
     setsockopt(sock, SOL_TCP, TCP_KEEPINTVL, &sock_opt, sizeof(sock_opt));
-  }
 #endif
+#endif
+  }
   return sock;
 }
 
