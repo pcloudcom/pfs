@@ -45,12 +45,13 @@ Section "Install"
   
   Delete  "$INSTDIR\DokanInstall.exe"
 
-  createDirectory "$SMPROGRAMS\PCloud"
-  createShortCut "$SMPROGRAMS\PCloud\pCloud.lnk" "$INSTDIR\pCloud.exe" "" ""
-  createShortCut "$SMPROGRAMS\PCloud\uninstall.lnk" "$INSTDIR\pfs-uninst.exe" "" ""
+  CreateDirectory "$SMPROGRAMS\PCloud"
+  CreateShortCut "$SMPROGRAMS\PCloud\pCloud.lnk" "$INSTDIR\pCloud.exe" "" ""
+  CreateShortCut "$DESKTOP\pCloud.lnk" "$INSTDIR\pCloud.exe" ""
+  CreateShortCut "$SMPROGRAMS\PCloud\uninstall.lnk" "$INSTDIR\pfs-uninst.exe" "" ""
 
   MessageBox MB_YESNO|MB_ICONQUESTION "Do you want PCloud control application to start with windows?" IDNO NoStartup
-    createShortCut "$SMSTARTUP\pCloud.lnk" "$INSTDIR\pCloud.exe" "" ""
+    ExecWait `schtasks /create /tn "PCloud" /tr "'$INSTDIR\pCloud.exe'" /sc ONLOGON /rl highest /IT`
   NoStartup:
   
   MessageBox MB_YESNO|MB_ICONQUESTION "A reboot is required. Do you want to reboot now?" IDNO NoReboot
@@ -64,8 +65,8 @@ UninstallText "This will uninstall PCloud. Hit next to continue."
 
 Section "Uninstall"
 
-  Delete "$SMSTARTUP\pCloud.lnk"
   Delete "$SMPROGRAMS\PCloud\pCloud.lnk"
+  Delete "$DESKTOP\pCloud.lnk"
   Delete "$SMPROGRAMS\PCloud\uninstall.lnk"
   RMDir "$SMPROGRAMS\PCloud"
 
@@ -73,10 +74,11 @@ Section "Uninstall"
   DeleteRegKey HKCU "SOFTWARE\PCloud"
 
   ExecWait '"$INSTDIR\stop.bat" "$INSTDIR"'
-
+  ExecWait 'schtasks /delete /tn "PCloud" /F'
+  
   Delete "$INSTDIR\*.*"
     
   RMDir "$INSTDIR"
   Exec '"$PROGRAMFILES\Dokan\DokanLibrary\DokanUninstall.exe"'
-
+  Quit
 SectionEnd
