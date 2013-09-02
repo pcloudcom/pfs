@@ -26,6 +26,10 @@ UninstPage instfiles
 Section "Install"
 
   SetOutPath $INSTDIR
+  
+  IfFileExists $INSTDIR\pfs-uninst.exe Installed
+  
+  
   WriteRegStr HKCU SOFTWARE\NSISTest\BigNSISTest "Install_Dir" "$INSTDIR"
 
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\PCloud" "DisplayName" "PCloud Service"
@@ -57,6 +61,10 @@ Section "Install"
   MessageBox MB_YESNO|MB_ICONQUESTION "A reboot is required. Do you want to reboot now?" IDNO NoReboot
     Reboot
   NoReboot:
+  Quit
+  
+  Installed:
+    MessageBox MB_OK|MB_ICONEXCLAMATION "There is a PCloud already installed on your system. Please uninstall old version first."
   
 SectionEnd ; end the section
 
