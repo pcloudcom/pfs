@@ -9,7 +9,8 @@ struct iovec
   void*   iov_base;
   size_t  iov_len;
 };
-
+#else
+#include <sys/uio.h>
 #endif
 
 #define SETTINGS_PATH "/.pfs_settings"
