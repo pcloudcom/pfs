@@ -27,9 +27,8 @@ Section "Install"
 
   SetOutPath $INSTDIR
   
-  IfFileExists $INSTDIR\pfs-uninst.exe Installed
-  
-  
+  IfFileExists $INSTDIR\win_service.exe Installed
+
   WriteRegStr HKCU SOFTWARE\NSISTest\BigNSISTest "Install_Dir" "$INSTDIR"
 
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\PCloud" "DisplayName" "PCloud Service"
@@ -71,7 +70,12 @@ SectionEnd ; end the section
 
 UninstallText "This will uninstall PCloud. Hit next to continue."
 
+
 Section "Uninstall"
+
+  !include WinMessages.nsh
+  FindWindow $0 "pCloud"
+  SendMessage $0 ${WM_DESTROY} 0 0
 
   Delete "$SMPROGRAMS\PCloud\pCloud.lnk"
   Delete "$DESKTOP\pCloud.lnk"
@@ -84,9 +88,11 @@ Section "Uninstall"
   ExecWait '"$INSTDIR\stop.bat" "$INSTDIR"'
   ExecWait 'schtasks /delete /tn "PCloud" /F'
   
+  Delete "$INSTDIR\win_service.exe"
   Delete "$INSTDIR\*.*"
     
   RMDir "$INSTDIR"
   Exec '"$PROGRAMFILES\Dokan\DokanLibrary\DokanUninstall.exe"'
+  
   Quit
 SectionEnd
