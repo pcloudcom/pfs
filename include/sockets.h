@@ -4,6 +4,7 @@
 #if !defined(MINGW) && !defined(_WIN32)
 
 #include <sys/socket.h>
+#include <sys/uio.h>
 #include <arpa/inet.h>
 #include <netinet/tcp.h>
 #include <netdb.h>
