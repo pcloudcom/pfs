@@ -73,9 +73,11 @@ UninstallText "This will uninstall PCloud. Hit next to continue."
 
 Section "Uninstall"
 
-  !include WinMessages.nsh
-  FindWindow $0 "pCloud"
-  SendMessage $0 ${WM_DESTROY} 0 0
+  !include nsProcess.nsh
+  ${nsProcess::FindProcess} "pCloud.exe" $R0
+  StrCmp $R0 0 0 +2
+  MessageBox MB_OK|MB_ICONEXCLAMATION 'The pCloud is running. It will be closed.' IDOK
+  ${nsProcess::KillProcess} "pCloud.exe" $R0
 
   Delete "$SMPROGRAMS\PCloud\pCloud.lnk"
   Delete "$DESKTOP\pCloud.lnk"
