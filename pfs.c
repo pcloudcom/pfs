@@ -1123,6 +1123,8 @@ static void process_diff(binresult *diff){
       pthread_mutex_unlock(&treelock);
     return;
   }
+//  if (!strcmp(estr, "modifyuserinfo"))
+//    send_event_message(16, NULL);
 }
 
 static void *diff_thread(void *ptr){
