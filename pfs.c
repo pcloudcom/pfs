@@ -1353,7 +1353,8 @@ static int fs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
   filler(buf, ".", NULL, 0);
   filler(buf, "..", NULL, 0);
   for (i=0; i<folder->tfolder.nodecnt; i++)
-    filler(buf, folder->tfolder.nodes[i]->name, NULL, 0);
+    if (folder->tfolder.nodes[i]->name[0])
+      filler(buf, folder->tfolder.nodes[i]->name, NULL, 0);
   pthread_mutex_unlock(&treelock);
   return 0;
 }
