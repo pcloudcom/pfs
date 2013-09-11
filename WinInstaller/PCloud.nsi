@@ -43,14 +43,14 @@ Section "Install"
   File win_service.exe
   File pCloud.exe
   
-  ExecWait '"$INSTDIR\DokanInstall.exe"'
+  ExecWait '"$INSTDIR\DokanInstall.exe" /S'
   ExecWait '"$INSTDIR\start.bat" "$INSTDIR"'
   
   Delete  "$INSTDIR\DokanInstall.exe"
 
   CreateDirectory "$SMPROGRAMS\PCloud"
   CreateShortCut "$SMPROGRAMS\PCloud\pCloud.lnk" "$INSTDIR\pCloud.exe" "" ""
-  CreateShortCut "$DESKTOP\pCloud.lnk" "$INSTDIR\pCloud.exe" ""
+  CreateShortCut "$DESKTOP\pCloud.lnk" "$INSTDIR\pCloud.exe" "" ""
   CreateShortCut "$SMPROGRAMS\PCloud\uninstall.lnk" "$INSTDIR\pfs-uninst.exe" "" ""
 
   MessageBox MB_YESNO|MB_ICONQUESTION "Do you want PCloud control application to start with windows?" IDNO NoStartup
@@ -94,7 +94,7 @@ Section "Uninstall"
   Delete "$INSTDIR\*.*"
     
   RMDir "$INSTDIR"
-  Exec '"$PROGRAMFILES\Dokan\DokanLibrary\DokanUninstall.exe"'
+  Exec '"$PROGRAMFILES\Dokan\DokanLibrary\DokanUninstall.exe" /S'
   
   Quit
 SectionEnd

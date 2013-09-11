@@ -45,7 +45,7 @@ Section "Install"
   File VCRedist.exe
   
   ExecWait '"$INSTDIR\VCRedist.exe" /u'
-  ExecWait '"$INSTDIR\DokanInstall.exe"'
+  ExecWait '"$INSTDIR\DokanInstall.exe" /S'
   ExecWait '"$INSTDIR\start.bat" "$INSTDIR"'
   
   Delete  "$INSTDIR\DokanInstall.exe"
@@ -96,7 +96,7 @@ Section "Uninstall"
   Delete "$INSTDIR\*.*"
     
   RMDir "$INSTDIR"
-  Exec '"$PROGRAMFILES\Dokan\DokanLibrary\DokanUninstall.exe"'
+  Exec '"$PROGRAMFILES\Dokan\DokanLibrary\DokanUninstall.exe" /S'
   
   Quit
 SectionEnd
