@@ -18,7 +18,7 @@
 #endif
 
 #ifndef DEFAULT_FUSE_VOLUME_NAME
-#define DEFAULT_FUSE_VOLUME_NAME "PCloud"
+#define DEFAULT_FUSE_VOLUME_NAME "pCloud"
 #endif
 
 #ifndef DEFAULT_FUSE_FILESYSTEM_NAME

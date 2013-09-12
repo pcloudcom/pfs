@@ -1,15 +1,12 @@
 ; The name of the installer
-Name "PCloud"
-
-; The file to write
-OutFile "PCloudInstall.exe"
+Name "pCloud"
 
 InstallDir $PROGRAMFILES\PCloud
 RequestExecutionLevel admin
-Caption "PCloud FS Installer"
-InstallDirRegKey HKCU "Software\PCloud\Install" "Install_Dir"
-LicenseText "You agree with everithing?"
-LicenseData "license.txt"
+Caption "pCloud FS Installer"
+InstallDirRegKey HKCU "Software\pCloud\Install" "Install_Dir"
+LicenseText "Terms of service: "
+LicenseData "license.rtf"
 
 ;--------------------------------
 
@@ -20,8 +17,29 @@ Page instfiles
 
 UninstPage uninstConfirm
 UninstPage instfiles
-
 ;--------------------------------
+
+!include nsProcess.nsh
+
+
+!ifdef INNER
+  OutFile "inst.exe"
+!else
+  !system "$\"${NSISDIR}\makensis$\" /DINNER PCloud.nsi" = 0
+  !system "inst.exe" = 2
+
+  !system 'sign.bat "$%TEMP%\pfs-uninst.exe"' = 0
+
+  OutFile "pCloudInstall.exe"
+!endif
+
+Function .onInit
+!ifdef INNER
+  WriteUninstaller "$%TEMP%\pfs-uninst.exe"
+  Quit
+!endif
+FunctionEnd
+
 
 Section "Install"
   SetOutPath $INSTDIR
@@ -34,10 +52,16 @@ Section "Install"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\PCloud" "UninstallString" '"$INSTDIR\pfs-uninst.exe"'
   WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\PCloud" "NoModify" 1
   WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\PCloud" "NoRepair" 1
-  WriteUninstaller "pfs-uninst.exe"
+
+!ifndef INNER
+  File "$%TEMP%\pfs-uninst.exe"
+!endif
   
   File *.dll
-  File *.bat
+  File start.bat
+  File stop.bat
+  File restart.bat
+  File CreateTask.bat
   File start.xml
   File end.xml
   File DokanInstall.exe
@@ -51,11 +75,10 @@ Section "Install"
     Quit
   noError:
   
-  
   ExecWait '"$INSTDIR\start.bat" "$INSTDIR"'
   
   Delete  "$INSTDIR\DokanInstall.exe"
-
+  
   CreateDirectory "$SMPROGRAMS\PCloud"
   CreateShortCut "$SMPROGRAMS\PCloud\pCloud.lnk" "$INSTDIR\pCloud.exe" "" ""
   CreateShortCut "$DESKTOP\pCloud.lnk" "$INSTDIR\pCloud.exe" "" ""
@@ -63,7 +86,6 @@ Section "Install"
 
   MessageBox MB_YESNO|MB_ICONQUESTION "Do you want PCloud control application to start with windows?" IDNO NoStartup
     ExecWait '"$INSTDIR\CreateTask.bat" "$INSTDIR\pCloud.exe"'
-    ;WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "PCloud" "$INSTDIR\pCloud.exe"
   NoStartup:
   
   Delete start.xml
@@ -83,13 +105,12 @@ SectionEnd ; end the section
 
 UninstallText "This will uninstall PCloud. Hit next to continue."
 
-
+!ifdef INNER
 Section "Uninstall"
 
-  !include nsProcess.nsh
   ${nsProcess::FindProcess} "pCloud.exe" $R0
   StrCmp $R0 0 0 +2
-  MessageBox MB_OK|MB_ICONEXCLAMATION 'The pCloud is running. It will be closed.' IDOK
+  MessageBox MB_YESNO|MB_ICONEXCLAMATION 'The pCloud application is running. It will be closed.' IDNO NoStop
   ${nsProcess::KillProcess} "pCloud.exe" $R0
 
   Delete "$SMPROGRAMS\PCloud\pCloud.lnk"
@@ -103,11 +124,12 @@ Section "Uninstall"
   ExecWait '"$INSTDIR\stop.bat" "$INSTDIR"'
   ExecWait 'schtasks /delete /tn "PCloud" /F'
   
-  Delete "$INSTDIR\win_service.exe"
   Delete "$INSTDIR\*.*"
     
   RMDir "$INSTDIR"
   Exec '"$PROGRAMFILES\Dokan\DokanLibrary\DokanUninstall.exe" /S'
-  
+ 
+NoStop:
   Quit
 SectionEnd
+!endif
