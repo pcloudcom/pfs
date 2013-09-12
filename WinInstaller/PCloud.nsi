@@ -55,9 +55,6 @@ Section "Install"
   ExecWait '"$INSTDIR\start.bat" "$INSTDIR"'
   
   Delete  "$INSTDIR\DokanInstall.exe"
-  Delete start.xml
-  Delete end.xml
-  Delete CreateTask.bat
 
   CreateDirectory "$SMPROGRAMS\PCloud"
   CreateShortCut "$SMPROGRAMS\PCloud\pCloud.lnk" "$INSTDIR\pCloud.exe" "" ""
@@ -65,9 +62,13 @@ Section "Install"
   CreateShortCut "$SMPROGRAMS\PCloud\uninstall.lnk" "$INSTDIR\pfs-uninst.exe" "" ""
 
   MessageBox MB_YESNO|MB_ICONQUESTION "Do you want PCloud control application to start with windows?" IDNO NoStartup
-    ExecWait CreateTask.bat "$INSTDIR\pCloud.exe"
+    ExecWait '"$INSTDIR\CreateTask.bat" "$INSTDIR\pCloud.exe"'
     ;WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "PCloud" "$INSTDIR\pCloud.exe"
   NoStartup:
+  
+  Delete start.xml
+  Delete end.xml
+  Delete CreateTask.bat
   
   MessageBox MB_YESNO|MB_ICONQUESTION "A reboot is required. Do you want to reboot now?" IDNO NoReboot
     Reboot
