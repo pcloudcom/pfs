@@ -38,7 +38,9 @@ Section "Install"
   WriteUninstaller "pfs-uninst.exe"
   
   File *.dll
-  File *.bat
+  File start.bat
+  File stop.bat
+  File restart.bat
   File DokanInstall.exe
   File win_service.exe
   File pCloud.exe
