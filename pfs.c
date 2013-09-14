@@ -1633,20 +1633,22 @@ static int schedule_readahead(openfile *of, off_t offset, size_t length, size_t 
   pagefile *pf;
   time_t tm;
   int unsigned numpages, lockpages, needpages, i;
-  char dontneed[fs_settings.readaheadmax/cachehead->pagesize];
+  char dontneed[length/cachehead->pagesize+4];
   int ret;
   debug("schedule_readahead offset %lu, len %u\n", offset, (uint32_t)length);
-  if (offset>of->file->tfile.size){
+  if (offset>of->file->tfile.size || !length){
     debug("schedule_readahead - invalid offset\n");
     return 0;
   }
   length+=offset%cachehead->pagesize;
-  lock_length+=offset%cachehead->pagesize;
+  if (lock_length)
+    lock_length+=offset%cachehead->pagesize;
   offset=(offset/cachehead->pagesize)*cachehead->pagesize;
   if (offset+length>of->file->tfile.size)
     length=of->file->tfile.size-offset;
   length=((length+cachehead->pagesize-1)/cachehead->pagesize)*cachehead->pagesize;
-  lock_length=((lock_length+cachehead->pagesize-1)/cachehead->pagesize)*cachehead->pagesize;
+  if (lock_length)
+    lock_length=((lock_length+cachehead->pagesize-1)/cachehead->pagesize)*cachehead->pagesize;
   if (lock_length>length)
     lock_length=length;
   memset(dontneed, 0, fs_settings.readaheadmax/cachehead->pagesize);
@@ -1912,6 +1914,8 @@ err:
   unsigned char md5b[MD5_DIGEST_LENGTH];
   char md5x[MD5_DIGEST_LENGTH*2];
 //  debug("check_old_data - off: %lu, size %u\n", offset, (uint32_t)size);
+  if (!size)
+    return;
   frompageoff=offset/cachehead->pagesize;
   topageoff=((offset+size+cachehead->pagesize-1)/cachehead->pagesize)-1;
   time(&tm);
