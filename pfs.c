@@ -828,16 +828,16 @@ static void remove_from_parent(node *nd){
 
 static void free_file_cache(node *file){
   cacheentry *ce, *cn;
+  pthread_mutex_lock(&pageslock);
   ce=file->tfile.cache;
   while (ce){
     cn=ce->next;
     ce->free=1;
-#ifdef MADV_DONTNEED
-    madvise(cachepages+ce->pageid*cachehead->pagesize, cachehead->pagesize, MADV_DONTNEED);
-#endif
     list_add(freecache, ce);
     ce=cn;
   }
+  file->tfile.cache=NULL;
+  pthread_mutex_unlock(&pageslock);
 }
 
 static void delete_file(node *file, int removefromparent){
