@@ -66,11 +66,7 @@ static const char *cachefile=NULL;
 
 static uint64_t quota, usedquota;
 
-#if !defined(MINGW) && !defined(_WIN32)
 static char *auth="";
-#else
-static char *auth="OcRE1WxMyzzZnZ0e96nIT5TIbed5RrDbNshpjWheN7";
-#endif
 
 uid_t myuid=0;
 gid_t mygid=0;
@@ -777,7 +773,7 @@ static void diff_create_folder(binresult *meta, time_t mtime){
   node *folder, *f;
   uint64_t parentid;
   name=find_res(meta, "name");
-  folder=(node *)malloc(sizeof(node));
+  folder=new(node);
   folder->name=malloc(name->length+1);
   memcpy(folder->name, name->str, name->length+1);
   folder->createtime=find_res(meta, "created")->num+timeoff;
@@ -863,7 +859,7 @@ static void diff_create_file(binresult *meta, time_t mtime){
   name=find_res(meta, "name");
   if (!name)
     return;
-  file=(node *)malloc(sizeof(node));
+  file=new(node);
   file->name=malloc(name->length+1);
   memcpy(file->name, name->str, name->length+1);
   file->createtime=find_res(meta, "created")->num+timeoff;
@@ -872,6 +868,7 @@ static void diff_create_file(binresult *meta, time_t mtime){
   file->tfile.size=find_res(meta, "size")->num;
   file->tfile.hash=find_res(meta, "hash")->num;
   file->tfile.cache=NULL;
+  file->tfile.refcnt=0;
   file->isfolder=0;
   file->isdeleted=0;
   parentid=find_res(meta, "parentfolderid")->num;
@@ -1267,11 +1264,9 @@ static node *get_parent_folder(const char *path, const char **name){
   node *ret;
   size_t len;
   lslash=rindex(path, '/');
-  if (lslash==path){
-    *name=path+1;
-    return get_node_by_path("/");
-  }
   *name=lslash+1;
+  if (lslash==path)
+    return get_node_by_path("/");
   len=lslash-path;
   cpath=(char *)malloc(len+1);
   memcpy(cpath, path, len);
@@ -1938,7 +1933,7 @@ err:
       md5x[j*2+1]=hexdigits[md5b[j]%16];
     }
 //    debug("scheduling verify of pageid=%u\n", entries[i]->pageid);
-    pf=(pagefile *)malloc(sizeof(pagefile));
+    pf=new(pagefile);
     pf->of=of;
     pf->page=entries[i];
     pthread_mutex_lock(&of->mutex);
