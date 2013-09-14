@@ -1651,7 +1651,7 @@ static int schedule_readahead(openfile *of, off_t offset, size_t length, size_t 
     lock_length=((lock_length+cachehead->pagesize-1)/cachehead->pagesize)*cachehead->pagesize;
   if (lock_length>length)
     lock_length=length;
-  memset(dontneed, 0, fs_settings.readaheadmax/cachehead->pagesize);
+  memset(dontneed, 0, length/cachehead->pagesize+4);
   time(&tm);
   numpages=length/cachehead->pagesize;
   lockpages=lock_length/cachehead->pagesize;
