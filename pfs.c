@@ -453,6 +453,7 @@ static void reconnect_if_needed();
 static binresult *do_cmd(const char *command, size_t cmdlen, const void *data, size_t datalen, binparam *params, size_t paramcnt,
                          task_callback callback, void *callbackptr){
   uint64_t myid;
+  pthread_mutexattr_t mattr;
   pthread_mutex_t mymutex;
   pthread_cond_t mycond;
   binparam nparams[paramcnt+1];
@@ -460,7 +461,10 @@ static binresult *do_cmd(const char *command, size_t cmdlen, const void *data, s
   binresult *res;
   int cnt;
   debug("Do-cmd enter %s, %c\n", command, callback?'C':'D');
-  pthread_mutex_init(&mymutex, NULL);
+
+  pthread_mutexattr_init(&mattr);
+  pthread_mutexattr_settype(&mattr, PTHREAD_MUTEX_RECURSIVE);
+  pthread_mutex_init(&mymutex, &mattr);
   pthread_cond_init(&mycond, NULL);
 
   if (callback){
@@ -477,7 +481,7 @@ static binresult *do_cmd(const char *command, size_t cmdlen, const void *data, s
     pthread_mutex_lock(&mymutex);
   }
   pthread_mutex_lock(&taskslock);
-  debug("Do-cmd send %u\n", (uint32_t)taskid+1);
+  debug("Do-cmd send %u\n", (uint32_t)taskid);
   myid=ptask->taskid=taskid++;
   ptask->next=tasks;
   tasks=ptask;
@@ -525,7 +529,7 @@ static binresult *do_cmd(const char *command, size_t cmdlen, const void *data, s
             pthread_cond_destroy(&mycond);
             pthread_mutex_destroy(&mymutex);
             debug("##### Do-cmd %s, %" PRIu64 " failed to wake.\n", command, myid);
-            cancel_all_and_reconnect();
+            reconnect_if_needed();
             return NULL;
           }
           else{
@@ -548,6 +552,7 @@ static binresult *do_cmd(const char *command, size_t cmdlen, const void *data, s
 
   pthread_cond_destroy(&mycond);
   pthread_mutex_destroy(&mymutex);
+  pthread_mutexattr_destroy(&mattr);
   debug("Do-cmd exit %s, %p\n", command, res);
   return res;
 }
@@ -560,7 +565,7 @@ static void cancel_all(){
     t=tasks;
     tasks=t->next;
     pthread_mutex_unlock(&taskslock);
-    debug("cancel_all - get task.\n");
+    debug("cancel_all - get task %lu.\n", (unsigned long)t->taskid);
     if (t->type==TASK_TYPE_WAIT){
       t->result=NULL;
       debug("cancel_all - task TASK_TYPE_WAIT\n");
@@ -625,6 +630,7 @@ static void cancel_all_and_reconnect(){
       }
     }
   } while (!sock);
+  sleep(1);
   pthread_mutex_unlock(&writelock);
   cancel_all();
   debug("cancel_all_and_reconnect leave\n");
@@ -2102,7 +2108,7 @@ static int fs_read(const char *path, char *buf, size_t size, off_t offset,
             ce->sleeping--;
             pthread_mutex_unlock(&pageslock);
             debug("request page - failed to wake\n");
-            reconnect_if_needed();
+            cancel_all_and_reconnect();
             return NOT_CONNECTED_ERR;
           }
         }
@@ -2743,6 +2749,11 @@ void *fs_init(struct fuse_conn_info *conn){
   pthread_mutexattr_settype(&mattr, PTHREAD_MUTEX_RECURSIVE);
   pthread_mutex_init(&treelock, &mattr);
   pthread_cond_init(&treecond, NULL);
+
+  pthread_mutexattr_init(&mattr);
+  pthread_mutexattr_settype(&mattr, PTHREAD_MUTEX_RECURSIVE);
+  pthread_mutex_init(&wakelock, &mattr);
+  pthread_cond_init(&wakecond, NULL);
 
 #if defined(FUSE_CAP_ASYNC_READ)
   conn->want|=FUSE_CAP_ASYNC_READ;
