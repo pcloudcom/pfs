@@ -421,10 +421,12 @@ static int try_to_wake_diff(){
 
 static int try_to_wake_data(){
   int res;
+  debug("try_to_wake_data - in\n");
   pthread_mutex_lock(&wakelock);
   pipe_write(datawakefd, "w", 1);
   res=pthread_cond_wait_sec(&wakecond, &wakelock, 15);
   pthread_mutex_unlock(&wakelock);
+  debug("try_to_wake_data - out %d\n", res);
   return res;
 }
 
@@ -444,6 +446,9 @@ static int remove_task(task *ptask, uint64_t id){
   pthread_mutex_unlock(&taskslock);
   return t!=NULL;
 }
+
+static void cancel_all_and_reconnect();
+static void reconnect_if_needed();
 
 static binresult *do_cmd(const char *command, size_t cmdlen, const void *data, size_t datalen, binparam *params, size_t paramcnt,
                          task_callback callback, void *callbackptr){
@@ -472,7 +477,7 @@ static binresult *do_cmd(const char *command, size_t cmdlen, const void *data, s
     pthread_mutex_lock(&mymutex);
   }
   pthread_mutex_lock(&taskslock);
-  debug("Do-cmd send %u\n", (uint32_t)taskid);
+  debug("Do-cmd send %u\n", (uint32_t)taskid+1);
   myid=ptask->taskid=taskid++;
   ptask->next=tasks;
   tasks=ptask;
@@ -482,39 +487,57 @@ static binresult *do_cmd(const char *command, size_t cmdlen, const void *data, s
   nparams[0].paramnamelen=2;
   nparams[0].paramtype=PARAM_NUM;
   nparams[0].un.num=ptask->taskid;
+  debug("Do-cmd - pre-writelock\n");
   pthread_mutex_lock(&writelock);
+  debug("Do-cmd - writelocked\n");
   res=NULL;
   cnt=0;
   while (!res && cnt++<=3){
+    debug("Do-cmd - sending data...\n");
     if (datalen)
       res=do_send_command(sock, command, cmdlen, nparams, paramcnt+1, datalen, 0);
     else
       res=do_send_command(sock, command, cmdlen, nparams, paramcnt+1, -1, 0);
-    if (!res && try_to_wake_data())
+    if (!res && try_to_wake_data()){
+      debug("Do-cmd - failed to send data - reconnecting %d\n", cnt);
+      reconnect_if_needed();
       break;
+    }
   }
   if (res && datalen){
     if (writeall(sock, data, datalen)){
-      debug("do_cmd - writeall failed\n");
+      debug("Do-cmd - writeall failed\n");
       res=NULL;
     }
   }
+  debug("Do-cmd - pre writeUNlock\n");
   pthread_mutex_unlock(&writelock);
+  debug("Do-cmd - writeUNlocked\n");
 
   if (!callback){
-   if (res){
-     debug("##### Do-cmd wait %s\n", command);
-     if (pthread_cond_wait_sec(&mycond, &mymutex, INITIAL_COND_TIMEOUT_SEC) && (try_to_wake_data() || pthread_cond_wait_timeout(&mycond, &mymutex))){
-       pthread_mutex_unlock(&mymutex);
-       remove_task(ptask, myid);
-       pthread_cond_destroy(&mycond);
-       pthread_mutex_destroy(&mymutex);
-       return NULL;
-     }
-     debug("##### Do-cmd got  %s\n", command);
-   }
-   pthread_mutex_unlock(&mymutex);
-   res=ptask->result;
+    if (res){
+      debug("##### Do-cmd wait %s, %" PRIu64 "\n", command, myid);
+      if (pthread_cond_wait_sec(&mycond, &mymutex, INITIAL_COND_TIMEOUT_SEC)){
+        debug("##### Do-cmd wait %s, %" PRIu64 " failed! Try to wake\n", command, myid);
+        if(try_to_wake_data() || pthread_cond_wait_timeout(&mycond, &mymutex)){
+          if (remove_task(ptask, myid)){
+            pthread_mutex_unlock(&mymutex);
+            pthread_cond_destroy(&mycond);
+            pthread_mutex_destroy(&mymutex);
+            debug("##### Do-cmd %s, %" PRIu64 " failed to wake.\n", command, myid);
+            cancel_all_and_reconnect();
+            return NULL;
+          }
+          else{
+            debug("##### Do-cmd %s, %" PRIu64 " task not found.\n", command, myid);
+            return NULL;
+          }
+        }
+      }
+      debug("##### Do-cmd got %s\n", command);
+    }
+    pthread_mutex_unlock(&mymutex);
+    res=ptask->result;
   }
   else if (!res){
     if (remove_task(ptask, myid)){
@@ -629,7 +652,7 @@ static void reconnect_if_needed(){
   debug("data thread awake\n");
   res=send_command_nb(sock, "nop");
   if (!res){
-    debug("reconnecting data because write failed'n");
+    debug("reconnecting data because write failed\n");
     return cancel_all_and_reconnect();
   }
   timeout.tv_sec=RECONNECT_TIMEOUT;
@@ -1820,9 +1843,11 @@ static void fs_release_finished(void *_of, binresult *res){
     pthread_cond_wait(&of->cond, &of->mutex);
   pthread_mutex_unlock(&of->mutex);
   if (!res) debug("fs_release_finished - destroy mutex\n");
-  pthread_cond_destroy(&of->cond);
-  pthread_mutex_destroy(&of->mutex);
-  free(of);
+  if (!of->refcnt){
+    pthread_cond_destroy(&of->cond);
+    pthread_mutex_destroy(&of->mutex);
+    free(of);
+  }
 }
 
 static int fs_release(const char *path, struct fuse_file_info *fi){
@@ -2010,7 +2035,7 @@ static int fs_read(const char *path, char *buf, size_t size, off_t offset,
   if (i==MAX_FILE_STREAMS){
     size_t min;
     int mi;
-    //debug("run out of streams !!!\n");
+    debug("run out of streams !!!\n");
     min=~(size_t)0;
     mi=0;
     for (i=0; i<MAX_FILE_STREAMS; i++)
@@ -2039,7 +2064,7 @@ static int fs_read(const char *path, char *buf, size_t size, off_t offset,
   else if (readahead>fs_settings.readaheadmax)
     readahead=fs_settings.readaheadmax;
 
-//  debug("requested data with offset=%lu and size=%u (pages %u-%u), current speed=%u, reading ahead=%u\n", offset, size, frompageoff, topageoff, of->currentspeed, readahead);
+  debug("requested data with offset=%lu and size=%u (pages %u-%u), current speed=%u, reading ahead=%u\n", offset, size, frompageoff, topageoff, of->currentspeed, readahead);
 
   if (size<readahead/2){
     if (cachesec)
@@ -2047,7 +2072,7 @@ static int fs_read(const char *path, char *buf, size_t size, off_t offset,
     else
       check_old_data(of, offset, size);
     if (schedule_readahead(of, offset, readahead, size)){
-//      debug("read - err 1\n");
+      debug("read - err 1\n");
       return NOT_CONNECTED_ERR;
     }
   }
@@ -2057,7 +2082,7 @@ static int fs_read(const char *path, char *buf, size_t size, off_t offset,
     else
       check_old_data(of, offset, size);
     if (schedule_readahead(of, offset, size+readahead, size)){
-//      debug("read - err 2\n");
+      debug("read - err 2\n");
       return NOT_CONNECTED_ERR;
     }
   }
@@ -2067,21 +2092,26 @@ static int fs_read(const char *path, char *buf, size_t size, off_t offset,
   ce=of->file->tfile.cache;
   while (ce){
     if (ce->offset>=frompageoff && ce->offset<=topageoff){
-//      debug("page with offset %u w=%u\n", ce->offset, ce->waiting);
+      debug("page with offset %u w=%u\n", ce->offset, ce->waiting);
       if (ce->waiting){
         ce->sleeping++;
-//        debug("waiting page=%u\n", ce->pageid);
-        if (pthread_cond_wait_sec(&ce->cond, &pageslock, INITIAL_COND_TIMEOUT_SEC) && (try_to_wake_data() || pthread_cond_wait_timeout(&ce->cond, &pageslock))){
-          ce->sleeping--;
-          pthread_mutex_unlock(&pageslock);
-          return NOT_CONNECTED_ERR;
+        debug("waiting page=%u\n", ce->pageid);
+        if (pthread_cond_wait_sec(&ce->cond, &pageslock, INITIAL_COND_TIMEOUT_SEC)){
+          debug("request page - Try to wake\n");
+          if(try_to_wake_data() || pthread_cond_wait_timeout(&ce->cond, &pageslock)){
+            ce->sleeping--;
+            pthread_mutex_unlock(&pageslock);
+            debug("request page - failed to wake\n");
+            reconnect_if_needed();
+            return NOT_CONNECTED_ERR;
+          }
         }
-//        debug("got page=%u\n", ce->pageid);
+        debug("got page=%u\n", ce->pageid);
         ce->sleeping--;
         of->streams[i].length*=2;
       }
-      //debug("size=%u offset=%llu diff=%u rs=%u\n", size, offset, diff, ce->realsize);
-//      debug("page with offset %u w=%u f=%u pageid=%u\n", ce->offset, ce->waiting, frompageoff, ce->pageid);
+      debug("size=%u offset=%"PRIi64" diff=%u rs=%u\n", size, (int64_t)offset, diff, ce->realsize);
+      debug("page with offset %u w=%u f=%u pageid=%u\n", ce->offset, ce->waiting, frompageoff, ce->pageid);
       if (ce->offset==frompageoff){
         bytes=ce->realsize-diff;
         if (bytes>size)
@@ -2107,7 +2137,7 @@ static int fs_read(const char *path, char *buf, size_t size, off_t offset,
     ret=of->error;
     of->error=0;
   }
-//  debug ("fs_read %s - %d\n", path, ret);
+  debug ("fs_read %s - %d\n", path, ret);
   return ret;
 }
 
@@ -2700,7 +2730,11 @@ void *fs_init(struct fuse_conn_info *conn){
 
   pthread_mutex_init(&calllock, NULL);
   pthread_mutex_init(&taskslock, NULL);
-  pthread_mutex_init(&writelock, NULL);
+
+  pthread_mutexattr_init(&mattr);
+  pthread_mutexattr_settype(&mattr, PTHREAD_MUTEX_RECURSIVE);
+  pthread_mutex_init(&writelock, &mattr);
+
   pthread_mutex_init(&indexlock, NULL);
   pthread_mutex_init(&datamutex, NULL);
   pthread_cond_init(&datacond, NULL);
