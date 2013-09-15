@@ -656,7 +656,9 @@ static void reconnect_if_needed(){
   binresult *res;
   struct timeval timeout;
   debug("data thread awake\n");
+  pthread_mutex_lock(&writelock);
   res=send_command_nb(sock, "nop");
+  pthread_mutex_unlock(&writelock);
   if (!res){
     debug("reconnecting data because write failed\n");
     return cancel_all_and_reconnect();
@@ -1658,7 +1660,6 @@ err:
   debug("schedule_readahead_finished failed! NC error\n");
   of->error=NOT_CONNECTED_ERR;
   pthread_mutex_lock(&pageslock);
-  list_del(page);
   page->waiting=0;
   page->lastuse=0;
   if (page->sleeping){
@@ -2013,11 +2014,10 @@ static int fs_read(const char *path, char *buf, size_t size, off_t offset,
   time_t tm;
   int ret, i;
   of=(openfile *)((uintptr_t)fi->fh);
-  /* It might make sense to place a lock (of->mutex is good candidate) around the following operation on one hand as this might be
-   * executing in parralel. On the other hand, corrupted streams table will only lead to miscalculated readahed, but still winthin
-   * boundaries, so generally no harm.
-   */
 
+  if (of->error)
+    return of->error;
+  
   if (of->issetting)
     return fs_read_setting(of, buf, size, offset);
 
@@ -2116,8 +2116,12 @@ static int fs_read(const char *path, char *buf, size_t size, off_t offset,
         ce->sleeping--;
         of->streams[i].length*=2;
       }
-      debug("size=%u offset=%"PRIi64" diff=%u rs=%u\n", size, (int64_t)offset, diff, ce->realsize);
-      debug("page with offset %u w=%u f=%u pageid=%u\n", ce->offset, ce->waiting, frompageoff, ce->pageid);
+      if (of->error){
+        pthread_mutex_unlock(&pageslock);
+        return of->error;
+      }
+      //debug("size=%u offset=%llu diff=%u rs=%u\n", size, offset, diff, ce->realsize);
+//      debug("page with offset %u w=%u f=%u pageid=%u\n", ce->offset, ce->waiting, frompageoff, ce->pageid);
       if (ce->offset==frompageoff){
         bytes=ce->realsize-diff;
         if (bytes>size)
