@@ -132,8 +132,8 @@ typedef struct _task {
   binresult *result;
   pthread_mutex_t *mutex;
   pthread_cond_t *cond;
-  uint32_t type;
   task_callback call;
+  uint32_t type;
 } task;
 
 struct _node;
@@ -421,13 +421,13 @@ static int try_to_wake_data(){
   return 0;
 }
 
-static void remove_task(task *ptask){
+static int remove_task(task *ptask, uint64_t id){
   task *t, **pt;
   pthread_mutex_lock(&taskslock);
   t=tasks;
   pt=&tasks;
   while (t){
-    if (t==ptask){
+    if (t==ptask && t->taskid==id){
       *pt=t->next;
       break;
     }
@@ -435,10 +435,12 @@ static void remove_task(task *ptask){
     t=t->next;
   }
   pthread_mutex_unlock(&taskslock);
+  return t!=NULL;
 }
 
 static binresult *do_cmd(const char *command, size_t cmdlen, const void *data, size_t datalen, binparam *params, size_t paramcnt,
                          task_callback callback, void *callbackptr){
+  uint64_t myid;
   pthread_mutex_t mymutex;
   pthread_cond_t mycond;
   binparam nparams[paramcnt+1];
@@ -464,7 +466,7 @@ static binresult *do_cmd(const char *command, size_t cmdlen, const void *data, s
   }
   pthread_mutex_lock(&taskslock);
   debug("Do-cmd send %u\n", (uint32_t)taskid);
-  ptask->taskid=taskid++;
+  myid=ptask->taskid=taskid++;
   ptask->next=tasks;
   tasks=ptask;
   pthread_mutex_unlock(&taskslock);
@@ -497,7 +499,7 @@ static binresult *do_cmd(const char *command, size_t cmdlen, const void *data, s
      debug("##### Do-cmd wait %s\n", command);
      if (pthread_cond_wait_sec(&mycond, &mymutex, INITIAL_COND_TIMEOUT_SEC) && (try_to_wake_data() || pthread_cond_wait_timeout(&mycond, &mymutex))){
        pthread_mutex_unlock(&mymutex);
-       remove_task(ptask);
+       remove_task(ptask, myid);
        pthread_cond_destroy(&mycond);
        pthread_mutex_destroy(&mymutex);
        return NULL;
@@ -508,9 +510,10 @@ static binresult *do_cmd(const char *command, size_t cmdlen, const void *data, s
    res=ptask->result;
   }
   else if (!res){
-    remove_task(ptask);
-    free(ptask);
-    callback(callbackptr, NULL);
+    if (remove_task(ptask, myid)){
+      free(ptask);
+      callback(callbackptr, NULL);
+    }
   }
 
   pthread_cond_destroy(&mycond);
