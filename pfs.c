@@ -253,6 +253,9 @@ static pthread_cond_t datacond=PTHREAD_COND_INITIALIZER;
 static pthread_mutex_t treelock=PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t treecond=PTHREAD_COND_INITIALIZER;
 
+static pthread_mutex_t wakelock=PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t wakecond=PTHREAD_COND_INITIALIZER;
+
 static int unsigned treesleep=0;
 static int processingtask=0;
 
@@ -417,8 +420,12 @@ static int try_to_wake_diff(){
 }
 
 static int try_to_wake_data(){
+  int res;
+  pthread_mutex_lock(&wakelock);
   pipe_write(datawakefd, "w", 1);
-  return 0;
+  res=pthread_cond_wait_sec(&wakecond, &wakelock, 15);
+  pthread_mutex_unlock(&wakelock);
+  return res;
 }
 
 static int remove_task(task *ptask, uint64_t id){
@@ -654,6 +661,9 @@ static void *receive_thread(void *ptr){
     else if (r==1){
       pipe_read(wakefds[0], &b, 1);
       reconnect_if_needed();
+      pthread_mutex_lock(&wakelock);
+      pthread_cond_broadcast(&wakecond);
+      pthread_mutex_unlock(&wakelock);
       continue;
     }
     else
