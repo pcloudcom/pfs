@@ -56,7 +56,7 @@ static int writeallfd(int sock, const void *ptr, size_t len){
   while (len){
     res=send(sock, ptr, len, 0);
     if (res==-1){
-      debug(" ---  send failed\n");
+      debug(" ---  send failed with errno %d\n", (int)errno);
       if (errno==EINTR || errno==EAGAIN){
         debug(" --- try again...\n");
         continue;
@@ -98,7 +98,7 @@ static ssize_t readallfd(int sock, void *ptr, size_t len){
       return -1;
     }
     else if (ret==-1){
-      debug("   ---  read - error... \n");
+      debug("   ---  read - error errno %d\n", (int)errno);
       if (errno==EINTR){
         debug("   ---  read - try again \n");
         continue;
