@@ -627,7 +627,9 @@ static void reconnect_if_needed(){
   binresult *res;
   struct timeval timeout;
   debug("data thread awake\n");
+  pthread_mutex_lock(&writelock);
   res=send_command_nb(sock, "nop");
+  pthread_mutex_unlock(&writelock);
   if (!res){
     debug("reconnecting data because write failed'n");
     return cancel_all_and_reconnect();
