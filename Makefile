@@ -23,6 +23,9 @@ all: mount.pfs
 mount.pfs: settings.o pfs.o lib/binapi.o
 	$(CC) settings.o pfs.o lib/binapi.o -o mount.pfs $(LDFLAGS)
 
+install: mount.pfs
+	install -D mount.pfs $(DESTDIR)/usr/bin/mount.pfs
+
 clean:
 	rm -f *~ *.o lib/*o mount.pfs
 
