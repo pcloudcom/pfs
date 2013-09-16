@@ -10,3 +10,5 @@ call sign.bat PCloudInstall.exe
 
 "C:\Program Files (x86)\NSIS\makensis.exe" PCloudXP.nsi
 call sign.bat PCloudInstallXP.exe
+
+del inst.exe
