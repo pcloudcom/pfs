@@ -1,0 +1,16 @@
+Source: pcloudfs
+Section: unknown
+Priority: extra
+Maintainer: Vasil Kolev <vasil@mobileinno.com>
+Build-Depends: debhelper (>= 7.0.50~), libssl-dev, libfuse-dev, pkg-config, xsltproc, docbook-xsl
+Standards-Version: 3.8.4
+Homepage: http://pcloud.com/
+#Vcs-Git: git://git.debian.org/collab-maint/pcloudfs.git
+#Vcs-Browser: http://git.debian.org/?p=collab-maint/pcloudfs.git;a=summary
+
+Package: pcloudfs
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: pCloud file-system
+ pCloud file system
+ long description goes here
