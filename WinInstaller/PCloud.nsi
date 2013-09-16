@@ -84,7 +84,7 @@ Section "Install"
   CreateShortCut "$DESKTOP\pCloud.lnk" "$INSTDIR\pCloud.exe" "" ""
   CreateShortCut "$SMPROGRAMS\PCloud\uninstall.lnk" "$INSTDIR\pfs-uninst.exe" "" ""
 
-  MessageBox MB_YESNO|MB_ICONQUESTION "Do you want PCloud control application to start with windows?" IDNO NoStartup
+  MessageBox MB_YESNO|MB_ICONQUESTION "Do you want to run pCloud automatically when Windows starts?" IDNO NoStartup
     ExecWait '"$INSTDIR\CreateTask.bat" "$INSTDIR\pCloud.exe"'
   NoStartup:
   
@@ -92,7 +92,7 @@ Section "Install"
   Delete end.xml
   Delete CreateTask.bat
   
-  MessageBox MB_YESNO|MB_ICONQUESTION "A reboot is required. Do you want to reboot now?" IDNO NoReboot
+  MessageBox MB_YESNO|MB_ICONQUESTION "A computer restart is required. Do you want to restart now?" IDNO NoReboot
     Reboot
   NoReboot:
   Quit
