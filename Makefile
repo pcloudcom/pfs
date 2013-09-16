@@ -10,7 +10,7 @@ else
 	LDFLAGS=-lssl -lpthread -lfuse
     endif
     ifeq ($(UNAME_S),Darwin)
-	FUSE_FLAGS=-D_FILE_OFFSET_BITS=64 -DFUSE_USE_VERSION=26
+	FUSE_FLAGS=-D_FILE_OFFSET_BITS=64 -DFUSE_USE_VERSION=26 -I/usr/local/include/osxfuse/fuse
         LDFLAGS=-losxfuse -lssl -lpthread -lcrypto
     endif
 endif
