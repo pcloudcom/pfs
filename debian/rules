@@ -9,5 +9,12 @@
 # Uncomment this to turn on verbose mode.
 #export DH_VERBOSE=1
 
-%:
+DB2MAN = /usr/share/sgml/docbook/stylesheet/xsl/docbook-xsl/manpages/docbook.xsl
+XP     = xsltproc -''-nonet -''-param man.charmap.use.subset "0"
+
+manpage.8: debian/manpage.xml
+	$(XP) $(DB2MAN) $<
+
+
+%: manpage.8
 	dh $@ 
