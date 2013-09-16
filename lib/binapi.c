@@ -475,7 +475,6 @@ static int connect_socket(const char *host, const char *port){
   struct addrinfo *res=NULL;
   struct addrinfo hints;
   int sock, rc;
-  rc=getaddrinfo(host, port, NULL, &res);
   memset(&hints, 0, sizeof(hints));
   hints.ai_family=AF_UNSPEC;
   hints.ai_socktype=SOCK_STREAM;
@@ -488,9 +487,10 @@ static int connect_socket(const char *host, const char *port){
             if (rc != 0) {
                 return -1;
             }
-            return connect_socket(host, port);
+            rc=getaddrinfo(host, port, &hints, &res);
+        }else{
+          return -1;
         }
-        return -1;
     }
 #else
   if (rc!=0)
@@ -574,6 +574,10 @@ void api_close(apisock *sock){
     SSL_shutdown(sock->ssl);
     SSL_free(sock->ssl);
   }
+#if defined(_WIN32)
+  closesocket(sock->sock);
+#else
   close(sock->sock);
+#endif // defined
   free(sock);
 }
