@@ -448,7 +448,6 @@ static int remove_task(task *ptask, uint64_t id){
   return t!=NULL;
 }
 
-static void cancel_all_and_reconnect();
 static void reconnect_if_needed();
 
 static binresult *do_cmd(const char *command, size_t cmdlen, const void *data, size_t datalen, binparam *params, size_t paramcnt,
@@ -2018,7 +2017,7 @@ static int fs_read(const char *path, char *buf, size_t size, off_t offset,
 
   if (of->error)
     return of->error;
-  
+
   if (of->issetting)
     return fs_read_setting(of, buf, size, offset);
 
