@@ -505,7 +505,11 @@ static binresult *do_cmd(const char *command, size_t cmdlen, const void *data, s
       res=do_send_command(sock, command, cmdlen, nparams, paramcnt+1, -1, 0);
     if (!res && try_to_wake_data()){
       debug("Do-cmd - failed to send data - reconnecting %d\n", cnt);
+/*
+      reconnect_if_needed is designed to be called only from the receive_thread, all others can just call try_to_wake_data(),
+      doing both actually runs reconnect_if_needed() in both threads which is generally not a good idea.
       reconnect_if_needed();
+*/
       break;
     }
   }
@@ -530,7 +534,8 @@ static binresult *do_cmd(const char *command, size_t cmdlen, const void *data, s
             pthread_cond_destroy(&mycond);
             pthread_mutex_destroy(&mymutex);
             debug("##### Do-cmd %s, %" PRIu64 " failed to wake.\n", command, myid);
-            reconnect_if_needed();
+            // see above
+            // reconnect_if_needed();
             return NULL;
           }
           else{
