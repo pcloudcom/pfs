@@ -18,6 +18,7 @@
 
 #if !defined(MINGW) && !defined(_WIN32)
 #  include <sys/mman.h>
+#  include <signal.h>
 #endif
 
 #include "binapi.h"
@@ -2970,6 +2971,9 @@ int main(int argc, char **argv){
   pfs_params params;
   int parsed_argc;
   char* parsed_argv[argc];
+#if defined(SIGPIPE) && defined(SIG_IGN)
+  signal(SIGPIPE, SIG_IGN);
+#endif
   memset(&params, 0, sizeof(params));
   parsed_argc = parse_args(argc, argv, parsed_argv, &params);
   return pfs_main(parsed_argc, parsed_argv, &params);

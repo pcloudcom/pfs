@@ -7,7 +7,7 @@ else
     UNAME_S := $(shell uname -s)
     ifeq ($(UNAME_S),Linux)
 	FUSE_FLAGS=$(shell pkg-config fuse --cflags)
-	LDFLAGS=-lssl -lpthread -lfuse
+	LDFLAGS=-lssl -lpthread -lcrypto -lfuse
     endif
     ifeq ($(UNAME_S),Darwin)
 	FUSE_FLAGS=-D_FILE_OFFSET_BITS=64 -DFUSE_USE_VERSION=26 -I/usr/local/include/osxfuse/fuse
