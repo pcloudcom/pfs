@@ -1119,7 +1119,7 @@ static void process_diff(binresult *diff){
   event=find_res(diff, "event");
   meta=find_res(diff, "metadata");
   tm=find_res(diff, "time")->num+timeoff;
-//  debug("diff -> %s\n", event->str);
+  debug("diff -> %s\n", event->str);
   if (!event || event->type!=PARAM_STR)
     return;
   estr=event->str;
@@ -1158,7 +1158,7 @@ static void process_diff(binresult *diff){
     }
     else
       return;
-    
+
     if (!strcmp(estr, "requestsharein"))
       send_event_message(diffid, 1, "User ", find_res(meta, "frommail")->str, " shared folder \"", snstr, "\" with you.", NULL);
     else if (!strcmp(estr, "acceptedshareout"))
@@ -1192,15 +1192,17 @@ static void *diff_thread(void *ptr){
   monitorfds[0]=diffsock->sock;
   monitorfds[1]=wakefds[0];
   while (1){
-//    debug("send diff\n");
+    debug("sending diff\n");
     res=send_command_nb(diffsock, "diff", P_NUM("diffid", diffid), P_BOOL("block", 1), P_STR("timeformat", "timestamp"));
     if (res){
       if (hasdata(diffsock))
         r=0;
-      else
+      else{
         r=ready_read(2, monitorfds, NULL);
-      if (r==0)
+      }
+      if (r==0){
         res=get_result(diffsock);
+      }
       else if (r==1){
         debug("diff got wake - reconnecting\n");
         pipe_read(wakefds[0], &b, 1);
@@ -1240,6 +1242,7 @@ static void *diff_thread(void *ptr){
       continue;
     }
     entries=find_res(res, "entries");
+    debug("diff thread - %u entries received\n", entries->length);
     for (i=0; i<entries->length; i++){
       entry=entries->array[i];
       process_diff(entry);
