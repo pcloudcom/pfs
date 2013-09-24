@@ -3,6 +3,7 @@ copy ..\BuildWin\bin\Service\win_service.exe . /Y
 copy ..\..\pfs-gui\build-pCloud-qt_static-Release\release\pCloud.exe . /Y
 
 call sign.bat pCloud.exe
+call sign.bat fuse4Win.dll
 call sign.bat win_service.exe
 
 "C:\Program Files (x86)\NSIS\makensis.exe" PCloud.nsi

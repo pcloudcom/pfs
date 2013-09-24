@@ -196,14 +196,13 @@ VOID WINAPI ServiceStart(const wchar_t * config_file)
     ReportStatusToSCMgr(SERVICE_RUNNING, NO_ERROR, 0);
     while (!bStop)
     {
-        Sleep(500);
-        if (loop < 1000 && loop % 10 == 0)
+        Sleep(2000);
+        if (loop < 2)
         {
             DWORD recipients = BSM_ALLDESKTOPS | BSM_APPLICATIONS;
             BroadcastSystemMessage(0, &recipients, WM_DEVICECHANGE, DBT_CONFIGCHANGED, 0);
-            loop = 0;
+            ++loop;
         }
-        ++loop;
     }
     ReportStatusToSCMgr(SERVICE_STOP_PENDING, NO_ERROR, 0);
 
