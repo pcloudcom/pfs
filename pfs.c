@@ -2074,7 +2074,7 @@ static int fs_read(const char *path, char *buf, size_t size, off_t offset,
     of->bytesthissec+=size;
   else{
     of->currentspeed=(of->currentspeed+of->bytesthissec/(tm-of->currentsec))/2;
-    of->bytesthissec=0;
+    of->bytesthissec=size;
     of->currentsec=tm;
   }
   if (readahead>of->currentspeed*fs_settings.readaheadmaxsec)
@@ -2122,7 +2122,6 @@ static int fs_read(const char *path, char *buf, size_t size, off_t offset,
             ce->sleeping--;
             pthread_mutex_unlock(&pageslock);
             debug("request page - failed to wake\n");
-            cancel_all_and_reconnect();
             return NOT_CONNECTED_ERR;
           }
         }
