@@ -17,7 +17,6 @@ endif
 
 CFLAGS=-Wall -g -O2 $(FUSE_FLAGS) -Iinclude -D_GNU_SOURCE
 
-
 all: mount.pfs
 
 mount.pfs: settings.o pfs.o lib/binapi.o

@@ -6,6 +6,7 @@
 #ifndef debug
 #ifdef DEBUG
 #   define debug(...) do {FILE *d=fopen("/tmp/pfs_srv.log", "a"); if (!d) break; fprintf(d, __VA_ARGS__); fclose(d);} while (0)
+//#   define debug(...) do {printf(__VA_ARGS__);} while (0)
 #else
 #   define debug(...)
 #endif

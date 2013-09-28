@@ -1693,7 +1693,7 @@ static int schedule_readahead(openfile *of, off_t offset, size_t length, size_t 
   pagefile *pf;
   time_t tm;
   int unsigned numpages, lockpages, needpages, i;
-  char dontneed[length/cachehead->pagesize+4];
+  char dontneed[length/cachehead->pagesize+8];
   int ret;
   debug("schedule_readahead offset %lu, len %u\n", offset, (uint32_t)length);
   if (offset>of->file->tfile.size || !length){
