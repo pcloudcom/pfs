@@ -170,6 +170,7 @@ typedef struct _node {
   };
   char isfolder;
   char isdeleted;
+  char hidefromlisting;
 } node;
 
 typedef struct {
@@ -836,6 +837,7 @@ static void diff_create_folder(binresult *meta, time_t mtime){
   folder->tfolder.foldercnt=0;
   folder->isfolder=1;
   folder->isdeleted=0;
+  folder->hidefromlisting=0;
   parentid=find_res(meta, "parentfolderid")->num;
   pthread_mutex_lock(&treelock);
   f=get_folder_by_id(parentid);
@@ -922,6 +924,7 @@ static void diff_create_file(binresult *meta, time_t mtime){
   file->tfile.refcnt=0;
   file->isfolder=0;
   file->isdeleted=0;
+  file->hidefromlisting=0;
   parentid=find_res(meta, "parentfolderid")->num;
   pthread_mutex_lock(&treelock);
 
@@ -1408,7 +1411,7 @@ static int fs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
   filler(buf, ".", NULL, 0);
   filler(buf, "..", NULL, 0);
   for (i=0; i<folder->tfolder.nodecnt; i++)
-    if (folder->tfolder.nodes[i]->name[0])
+    if (folder->tfolder.nodes[i]->name[0] && !folder->tfolder.nodes[i]->hidefromlisting)
       filler(buf, folder->tfolder.nodes[i]->name, NULL, 0);
   pthread_mutex_unlock(&treelock);
   return 0;
@@ -2513,14 +2516,9 @@ static int fs_rmdir(const char *path){
   }
   free(res);
   pthread_mutex_lock(&treelock);
-  while (1){
-    if (!get_node_by_path(path))
-      break;
-    else if (wait_tree_cond()){
-      pthread_mutex_unlock(&treelock);
-      return NOT_CONNECTED_ERR;
-    }
-  }
+  entry=get_node_by_path(path);
+  if (entry)
+    entry->hidefromlisting=1;
   pthread_mutex_unlock(&treelock);
   return 0;
 }
@@ -2562,14 +2560,9 @@ static int fs_unlink(const char *path){
   }
   free(res);
   pthread_mutex_lock(&treelock);
-  while (1){
-    if (!get_node_by_path(path))
-      break;
-    else if (wait_tree_cond()){
-      pthread_mutex_unlock(&treelock);
-      return NOT_CONNECTED_ERR;
-    }
-  }
+  entry=get_node_by_path(path);
+  if (entry)
+    entry->hidefromlisting=1;
   pthread_mutex_unlock(&treelock);
   return 0;
 }
