@@ -2512,6 +2512,16 @@ static int fs_rmdir(const char *path){
     return err;
   }
   free(res);
+  pthread_mutex_lock(&treelock);
+  while (1){
+    if (!get_node_by_path(path))
+      break;
+    else if (wait_tree_cond()){
+      pthread_mutex_unlock(&treelock);
+      return NOT_CONNECTED_ERR;
+    }
+  }
+  pthread_mutex_unlock(&treelock);
   return 0;
 }
 
@@ -2551,6 +2561,16 @@ static int fs_unlink(const char *path){
     return err;
   }
   free(res);
+  pthread_mutex_lock(&treelock);
+  while (1){
+    if (!get_node_by_path(path))
+      break;
+    else if (wait_tree_cond()){
+      pthread_mutex_unlock(&treelock);
+      return NOT_CONNECTED_ERR;
+    }
+  }
+  pthread_mutex_unlock(&treelock);
   return 0;
 }
 
