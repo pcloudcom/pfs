@@ -1711,6 +1711,7 @@ static int schedule_readahead(openfile *of, off_t offset, size_t length, size_t 
     lock_length=((lock_length+cachehead->pagesize-1)/cachehead->pagesize)*cachehead->pagesize;
   if (lock_length>length)
     lock_length=length;
+  // don't use sizeof(dontneed) or exactly the number of bytes from the declaration, length could grow
   memset(dontneed, 0, length/cachehead->pagesize+4);
   time(&tm);
   numpages=length/cachehead->pagesize;
