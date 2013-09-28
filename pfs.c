@@ -1745,6 +1745,8 @@ static int schedule_readahead(openfile *of, off_t offset, size_t length, size_t 
       ce->free=0;
       if (i<lockpages)
         ce->locked=1;
+      else
+        ce->locked=0;
       ce=ce->next;
     }
   pages->prev=last;
@@ -1857,18 +1859,16 @@ static void fs_release_finished(void *_of, binresult *res){
   if (of->file)
     dec_refcnt(of->file);
   pthread_mutex_lock(&of->mutex);
-  if (!res) debug("fs_release_finished - lock mutex\n");
+  debug("fs_release_finished - lock mutex\n");
   of->waitref=1;
-  if (!res) debug("fs_release_finished - waiting condition %u\n", of->refcnt);
-  while (res && of->refcnt)
+  debug("fs_release_finished - waiting condition %u\n", of->refcnt);
+  while (of->refcnt)
     pthread_cond_wait(&of->cond, &of->mutex);
   pthread_mutex_unlock(&of->mutex);
-  if (!res) debug("fs_release_finished - destroy mutex\n");
-  if (!of->refcnt){
-    pthread_cond_destroy(&of->cond);
-    pthread_mutex_destroy(&of->mutex);
-    free(of);
-  }
+  debug("fs_release_finished - destroy mutex\n");
+  pthread_cond_destroy(&of->cond);
+  pthread_mutex_destroy(&of->mutex);
+  free(of);
 }
 
 static int fs_release(const char *path, struct fuse_file_info *fi){
