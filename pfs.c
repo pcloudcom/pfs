@@ -1859,23 +1859,37 @@ static int fs_open(const char *path, struct fuse_file_info *fi){
   return 0;
 }
 
-static void fs_release_finished(void *_of, binresult *res){
-  openfile *of;
-  of=(openfile *)_of;
-  debug("fs_release_finished %p, %p! \n", _of, res);
-  if (of->file)
-    dec_refcnt(of->file);
+static void *wait_refcnt_thread(void *_of){
+  openfile *of=(openfile *)_of;
   pthread_mutex_lock(&of->mutex);
-  debug("fs_release_finished - lock mutex\n");
-  of->waitref=1;
-  debug("fs_release_finished - waiting condition %u\n", of->refcnt);
-  while (of->refcnt)
+  if (of->refcnt){
+    of->waitref=1;
     pthread_cond_wait(&of->cond, &of->mutex);
+  }
   pthread_mutex_unlock(&of->mutex);
-  debug("fs_release_finished - destroy mutex\n");
   pthread_cond_destroy(&of->cond);
   pthread_mutex_destroy(&of->mutex);
   free(of);
+  return NULL;
+}
+
+static void fs_release_finished(void *_of, binresult *res){
+  openfile *of=(openfile *)_of;
+  debug("fs_release_finished %p, %p! \n", _of, res);
+  if (of->file)
+    dec_refcnt(of->file);
+  if (of->refcnt){
+    pthread_t thread;
+    pthread_attr_t attr;
+    pthread_attr_init(&attr);
+    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+    pthread_create(&thread, &attr, wait_refcnt_thread, of);
+  }
+  else {
+    pthread_cond_destroy(&of->cond);
+    pthread_mutex_destroy(&of->mutex);
+    free(of);
+  }
 }
 
 static int fs_release(const char *path, struct fuse_file_info *fi){
