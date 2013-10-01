@@ -1778,24 +1778,27 @@ static void fs_open_finished(void *_of, binresult *res){
   openfile *of;
   binresult *sub;
   of=(openfile *)_of;
-  sub=find_res(res, "result");
-  if (!res) return;
   pthread_mutex_lock(&of->mutex);
-  if (!sub || sub->type!=PARAM_NUM){
-    debug("fs_open_finished - EIO\n");
-    of->error=-EIO;
-    if (of->waitcmd)
-      pthread_cond_broadcast(&of->cond);
+  if (res){
+    sub=find_res(res, "result");
+    if (!sub || sub->type!=PARAM_NUM){
+      debug("fs_open_finished - EIO\n");
+      of->error=-EIO;
+      if (of->waitcmd)
+        pthread_cond_broadcast(&of->cond);
+    }
+    else if (sub->num!=0){
+      debug("fs_open_finished - error %u\n", (uint32_t)sub->num);
+      of->error=convert_error(sub->num);
+      if (of->waitcmd)
+        pthread_cond_broadcast(&of->cond);
+    }
+    else{
+      of->fd=find_res(res, "fd")->num;
+    }
   }
-  else if (sub->num!=0){
-    debug("fs_open_finished - error %u\n", (uint32_t)sub->num);
-    of->error=convert_error(sub->num);
-    if (of->waitcmd)
-      pthread_cond_broadcast(&of->cond);
-  }
-  else{
-    of->fd=find_res(res, "fd")->num;
-  }
+  else
+    of->error=NOT_CONNECTED_ERR;
   dec_openfile_refcnt_locked(of);
   pthread_mutex_unlock(&of->mutex);
 }
@@ -2313,8 +2316,8 @@ static void fs_ftruncate_finished(void *_of, binresult *res){
   if (!res){
     debug("fs_ftruncate_finished error\n");
     of->error=NOT_CONNECTED_ERR;
-    of->refcnt--;
     pthread_cond_broadcast(&of->cond);
+    dec_openfile_refcnt_locked(of);
     pthread_mutex_unlock(&of->mutex);
     return;
   }
@@ -2427,11 +2430,14 @@ static int fs_truncate(const char *path, off_t size){
   fileid=entry->tfile.fileid;
   entry->tfile.size=size;
   pthread_mutex_unlock(&treelock);
+  pthread_mutex_lock(&indexlock);
   pthread_mutex_lock(&writelock);
+  filesopened++;
   send_command_nb(sock, "file_open", P_NUM("flags", 2), P_NUM("fileid", fileid));
   send_command_nb(sock, "file_truncate", P_STR("fd", "-1"), P_NUM("length", size));
   send_command_nb(sock, "file_close", P_STR("fd", "-1"));
   pthread_mutex_unlock(&writelock);
+  pthread_mutex_unlock(&indexlock);
   return 0;
 }
 
