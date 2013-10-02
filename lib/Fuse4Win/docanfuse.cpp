@@ -171,8 +171,10 @@ static int DOKAN_CALLBACK FuseMoveFile(
 {
 	impl_fuse_context *impl=the_impl;
 	if (impl->debug()) FWPRINTF(stderr, L"MoveFile %s -> %s\n\n", FileName, NewFileName);
-
-	return -errno_to_win32_error(impl->move_file(FileName,NewFileName, ReplaceIfExisting,DokanFileInfo));
+    int res = impl->move_file(FileName,NewFileName, ReplaceIfExisting,DokanFileInfo);
+    if (res == -EEXIST && !ReplaceIfExisting)
+        return -ERROR_ALREADY_EXISTS;
+	return -errno_to_win32_error(res);
 }
 
 static int DOKAN_CALLBACK FuseLockFile(
