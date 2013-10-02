@@ -1563,7 +1563,7 @@ static void gc_pages(){
 retry:
   numpages=0;
   for (i=0; i<cachehead->numpages; i++)
-    if (cacheentries[i].waiting+cacheentries[i].locked+cacheentries[i].free==0){
+    if (cacheentries[i].waiting+cacheentries[i].locked+cacheentries[i].free+cacheentries[i].sleeping==0){
       entries[numpages++]=&cacheentries[i];
     }
   if (!numpages){
@@ -2139,7 +2139,10 @@ static int fs_read(const char *path, char *buf, size_t size, off_t offset,
         debug("waiting page=%u\n", ce->pageid);
         if (pthread_cond_wait_sec(&ce->cond, &pageslock, INITIAL_COND_TIMEOUT_SEC)){
           debug("request page - Try to wake\n");
-          if(try_to_wake_data() || pthread_cond_wait_timeout(&ce->cond, &pageslock)){
+          pthread_mutex_unlock(&pageslock);
+          i=try_to_wake_data();
+          pthread_mutex_lock(&pageslock);
+          if(ce->waiting && (i || pthread_cond_wait_timeout(&ce->cond, &pageslock))){
             ce->sleeping--;
             pthread_mutex_unlock(&pageslock);
             debug("request page - failed to wake\n");
