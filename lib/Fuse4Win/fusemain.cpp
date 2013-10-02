@@ -86,8 +86,9 @@ int impl_fuse_context::do_create_file(LPCWSTR FileName, DWORD Disposition, DWORD
 	std::string fname=unixify(wchar_to_utf8_cstr(FileName));
 
 	//Create file?
-	if (Disposition!=CREATE_NEW && Disposition!=CREATE_ALWAYS && Disposition!=OPEN_ALWAYS)
+	if (Disposition!=CREATE_NEW && Disposition!=CREATE_ALWAYS && Disposition!=OPEN_ALWAYS){
 		return -ENOENT; //No, we're trying to open an existing file!
+	}
 
 	if (!ops_.create)
 	{
@@ -361,6 +362,9 @@ int impl_fuse_context::create_file(LPCWSTR file_name, DWORD access_mode,
 			{
 				if (!ops_.truncate) return -EINVAL;
 				CHECKED(ops_.truncate(fname.c_str(),0));
+			} else if (creation_disposition==CREATE_NEW)
+			{
+				return -EEXIST;
 			}
 
 			return do_open_file(file_name,access_mode,dokan_file_info);
