@@ -1246,11 +1246,13 @@ static void *diff_thread(void *ptr){
     }
     entries=find_res(res, "entries");
     debug("diff thread - %u entries received\n", entries->length);
+    pthread_mutex_lock(&treelock);
     for (i=0; i<entries->length; i++){
       entry=entries->array[i];
       process_diff(entry);
       diffid=find_res(entry, "diffid")->num;
     }
+    pthread_mutex_unlock(&treelock);
     diffid=find_res(res, "diffid")->num;
     free(res);
   }
