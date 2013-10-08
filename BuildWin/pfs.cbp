@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<CodeBlocks_project_file>
+	<FileVersion major="1" minor="6" />
+	<Project>
+		<Option title="pfs" />
+		<Option pch_mode="2" />
+		<Option compiler="gcc" />
+		<Build>
+			<Target title="Debug">
+				<Option output="./bin/Debug/pfs" prefix_auto="1" extension_auto="1" />
+				<Option working_dir="./bin/Debug" />
+				<Option object_output="obj/Debug/" />
+				<Option type="1" />
+				<Option compiler="gcc" />
+				<Option use_console_runner="0" />
+				<Option parameters="-u peshe@abv.bg -p Aldebaram m: -d" />
+				<Compiler>
+					<Add option="-Wall" />
+					<Add option="-g" />
+					<Add option="-DDEBUG" />
+				</Compiler>
+				<Linker>
+					<Add library=".\bin\Debug\libfuse4Win.a" />
+				</Linker>
+			</Target>
+			<Target title="Release">
+				<Option output="./bin/Release/pfs" prefix_auto="1" extension_auto="1" />
+				<Option object_output="obj/Release/" />
+				<Option type="1" />
+				<Option compiler="gcc" />
+				<Option parameters="g:" />
+				<Compiler>
+					<Add option="-O3" />
+					<Add option="-O2" />
+					<Add option="-Wall" />
+				</Compiler>
+				<Linker>
+					<Add option="-s" />
+					<Add library=".\bin\Release\libfuse4Win.a" />
+				</Linker>
+			</Target>
+			<Target title="D-64">
+				<Option output="./bin/D-64/pfs" prefix_auto="1" extension_auto="1" />
+				<Option object_output="obj/D-64/" />
+				<Option type="1" />
+				<Option compiler="msp430gcc" />
+				<Option parameters="g: -d" />
+				<Compiler>
+					<Add option="-Wall" />
+					<Add option="-g" />
+				</Compiler>
+				<Linker>
+					<Add library=".\bin\D-64\libfuse4Win.a" />
+				</Linker>
+			</Target>
+			<Target title="R-64">
+				<Option output="./bin/R-64/pfs" prefix_auto="1" extension_auto="1" />
+				<Option object_output="obj/R-64/" />
+				<Option type="1" />
+				<Option compiler="msp430gcc" />
+				<Option parameters="m: -d" />
+				<Compiler>
+					<Add option="-O3" />
+					<Add option="-Wall" />
+				</Compiler>
+				<Linker>
+					<Add option="-s" />
+					<Add library=".\bin\D-64\libfuse4Win.a" />
+				</Linker>
+			</Target>
+			<Target title="Service">
+				<Option output="./bin/Service/pfs" prefix_auto="1" extension_auto="1" />
+				<Option working_dir="" />
+				<Option object_output="obj/Release/" />
+				<Option type="2" />
+				<Option compiler="gcc" />
+				<Option parameters="g:" />
+				<Compiler>
+					<Add option="-O3" />
+					<Add option="-O2" />
+					<Add option="-Wall" />
+					<Add option="-DSERVICE" />
+				</Compiler>
+				<Linker>
+					<Add option="-s" />
+					<Add library=".\bin\Release\libfuse4Win.a" />
+				</Linker>
+			</Target>
+		</Build>
+		<Compiler>
+			<Add option="-Wall" />
+			<Add directory="../include" />
+			<Add directory="../lib/Fuse4Win" />
+			<Add directory="../include/win" />
+		</Compiler>
+		<Linker>
+			<Add library="libWs2_32.a" />
+			<Add library="libssl.a" />
+			<Add library="libcrypto.a" />
+			<Add library="libpthread.a" />
+		</Linker>
+		<Unit filename="../lib/binapi.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../pfs.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../settings.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../socetpair.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Extensions>
+			<code_completion />
+			<envvars />
+			<debugger />
+			<lib_finder disable_auto="1" />
+		</Extensions>
+	</Project>
+</CodeBlocks_project_file>
