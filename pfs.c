@@ -783,8 +783,13 @@ static void *receive_thread(void *ptr){
           continue;
         }
       }
-      else
-        r=ready_read(2, monitorfds, NULL);
+      else{
+        timeout.tv_sec=1;
+        timeout.tv_usec=0;
+        r=ready_read(2, monitorfds, &timeout);
+        if (r==-1)
+          continue;
+      }
     }
     if (r==0)
       res=get_result(sock);
@@ -805,7 +810,7 @@ static void *receive_thread(void *ptr){
     id=find_res(res, "id");
     if (!id || id->type!=PARAM_NUM){
       free(res);
-      debug(D_BUG, "receive_thread - no ID");
+      debug(D_WARNING, "receive_thread - no ID");
       continue;
     }
     debug(D_NOTICE, "receive_thread received %lu", (unsigned long)id->num);
@@ -824,7 +829,7 @@ static void *receive_thread(void *ptr){
     pthread_mutex_unlock(&taskslock);
     if (!t){
       free(res);
-      debug(D_WARNING, "receive_thread - no task, this might be a nop or truncate");
+      debug(D_BUG, "could not find task");
       continue;
     }
     sub=find_res(res, "data");
@@ -1755,6 +1760,25 @@ static void reschedule_readahead(pagefile *pf){
   fd_magick_stop();
 }
 
+static void move_first_task_to_tail(){
+  task *mt, *t;
+  pthread_mutex_lock(&taskslock);
+  mt=tasks;
+  if (mt && mt->next){
+    tasks=mt->next;
+    mt->next=NULL;
+    t=tasks;
+    while (1){
+      if (t->next==NULL){
+        t->next=mt;
+        break;
+      }
+      t=t->next;
+    }
+  }
+  pthread_mutex_unlock(&taskslock);
+}
+
 static void schedule_readahead_finished(void *_pf, binresult *res){
   binresult *rs;
   pagefile *pf;
@@ -1801,7 +1825,9 @@ static void schedule_readahead_finished(void *_pf, binresult *res){
     need_reconnect=1;
     if (pf->tries<fs_settings.retrycnt){
       of->connectionid=UINT32_MAX;
-      return reschedule_readahead(pf);
+      reschedule_readahead(pf);
+      move_first_task_to_tail();
+      return;
     }
     else
       goto err;
@@ -2272,7 +2298,7 @@ static int fs_read(const char *path, char *buf, size_t size, off_t offset,
     else
       check_old_data(of, offset, size);
     if (schedule_readahead(of, offset, readahead, size)){
-      debug(D_NOTICE, "read - err 1\n");
+      debug(D_WARNING, "schedule_readahead returned error\n");
       return NOT_CONNECTED_ERR;
     }
   }
