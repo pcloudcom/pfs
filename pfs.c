@@ -636,11 +636,12 @@ static binresult *do_cmd(const char *command, size_t cmdlen, const void *data, s
 
 static void cancel_all(){
   task *t, *t2, *tn;
-  debug(D_WARNING, "cancel_all called");
+  debug(D_WARNING, "called");
   pthread_mutex_lock(&taskslock);
   t=tasks;
-  t2=NULL;
   tasks=NULL;
+  pthread_mutex_unlock(&taskslock);
+  t2=NULL;
   // reverse list so oldest tasks get cancelled/rescheduled first
   while (t){
     tn=t->next;
@@ -651,26 +652,23 @@ static void cancel_all(){
   while (t2){
     t=t2;
     t2=t->next;
-    pthread_mutex_unlock(&taskslock);
-    debug(D_WARNING, "cancel_all - cancelling task %lu.", (unsigned long)t->taskid);
+    debug(D_WARNING, "cancelling task %lu.", (unsigned long)t->taskid);
     if (t->type==TASK_TYPE_WAIT){
       t->result=NULL;
-      debug(D_NOTICE, "cancel_all - task TASK_TYPE_WAIT");
+      debug(D_NOTICE, "task TASK_TYPE_WAIT");
       pthread_mutex_lock(t->mutex);
       pthread_cond_signal(t->cond);
       pthread_mutex_unlock(t->mutex);
-      debug(D_NOTICE, "cancel_all - task TASK_TYPE_WAIT signalled");
+      debug(D_NOTICE, "task TASK_TYPE_WAIT signalled");
     }
     else if (t->type==TASK_TYPE_CALL){
-      debug(D_NOTICE, "cancel_all - task TASK_TYPE_CALL - %p", t);
+      debug(D_NOTICE, "task TASK_TYPE_CALL - %p", t);
       t->call((void *)t->result, NULL);
       free(t);
-      debug(D_NOTICE, "cancel all - task TASK_TYPE_CALL called");
+      debug(D_NOTICE, "task TASK_TYPE_CALL called");
     }
-    pthread_mutex_lock(&taskslock);
   }
-  pthread_mutex_unlock(&taskslock);
-  debug(D_NOTICE, "cancel_all leave");
+  debug(D_NOTICE, "leave");
 }
 
 static void cancel_all_and_reconnect(){
@@ -810,7 +808,7 @@ static void *receive_thread(void *ptr){
     id=find_res(res, "id");
     if (!id || id->type!=PARAM_NUM){
       free(res);
-      debug(D_WARNING, "receive_thread - no ID");
+      debug(D_WARNING, "receive_thread - no ID, could be a nop or truncate");
       continue;
     }
     debug(D_NOTICE, "receive_thread received %lu", (unsigned long)id->num);
@@ -829,7 +827,7 @@ static void *receive_thread(void *ptr){
     pthread_mutex_unlock(&taskslock);
     if (!t){
       free(res);
-      debug(D_BUG, "could not find task");
+      debug(D_BUG, "could not find task %lu", (long unsigned)id->num);
       continue;
     }
     sub=find_res(res, "data");
@@ -1739,6 +1737,7 @@ static void check_for_reopen(openfile *of){
   pthread_mutex_lock(&indexlock);
   of->refcnt++;
   of->fd=0;
+  of->error=0;
   of->openidx=filesopened++;
   of->connectionid=connectionid;
   cmd_callback("file_open", fs_open_finished, of, P_NUM("flags", 0), P_NUM("fileid", of->file->tfile.fileid));
@@ -1853,7 +1852,7 @@ static void schedule_readahead_finished(void *_pf, binresult *res){
   free(_pf);
   return;
 err:
-  debug(D_WARNING, "failed! NC error\n");
+  debug(D_WARNING, "failed! NC error");
   of->error=NOT_CONNECTED_ERR;
   pthread_mutex_lock(&pageslock);
   page->waiting=0;
@@ -1864,7 +1863,7 @@ err:
   }
   pthread_mutex_unlock(&pageslock);
   dec_openfile_refcnt(of);
-  debug(D_NOTICE, "schedule_readahead_finished out Err");
+  debug(D_NOTICE, "out Err");
   free(_pf);
 }
 
@@ -1874,7 +1873,6 @@ static int schedule_readahead(openfile *of, off_t offset, size_t length, size_t 
   time_t tm;
   int unsigned numpages, lockpages, needpages, i;
   char dontneed[length/cachehead->pagesize+8];
-  int ret;
   debug(D_NOTICE, "offset %lu, len %u", offset, (uint32_t)length);
   if (offset>of->file->tfile.size || !length){
     debug(D_WARNING, "invalid offset");
@@ -1937,7 +1935,6 @@ static int schedule_readahead(openfile *of, off_t offset, size_t length, size_t 
   *last=pages;
   pthread_mutex_unlock(&pageslock);
   ce=pages;
-  ret=0;
   while (ce){
     pf=new(pagefile);
     pf->page=ce;
@@ -1951,8 +1948,8 @@ static int schedule_readahead(openfile *of, off_t offset, size_t length, size_t 
     fd_magick_stop();
     ce=ce->next;
   }
-  debug(D_NOTICE, "out : %d", ret);
-  return ret;
+  debug(D_NOTICE, "out 0");
+  return 0;
 }
 
 static void fs_open_finished(void *_of, binresult *res){
@@ -2233,8 +2230,10 @@ static int fs_read(const char *path, char *buf, size_t size, off_t offset,
   int ret, i;
   of=(openfile *)((uintptr_t)fi->fh);
 
-  if (of->error)
+  if (of->error){
+    debug(D_WARNING, "error is set to %d", of->error);
     return of->error;
+  }
 
   if (of->issetting)
     return fs_read_setting(of, buf, size, offset);
@@ -2308,7 +2307,7 @@ static int fs_read(const char *path, char *buf, size_t size, off_t offset,
     else
       check_old_data(of, offset, size);
     if (schedule_readahead(of, offset, size+readahead, size)){
-      debug(D_NOTICE, "read - err 2\n");
+      debug(D_WARNING, "schedule_readahead returned error\n");
       return NOT_CONNECTED_ERR;
     }
   }
@@ -2340,6 +2339,7 @@ static int fs_read(const char *path, char *buf, size_t size, off_t offset,
       }
       if (of->error){
         pthread_mutex_unlock(&pageslock);
+        debug(D_WARNING, "error is set to %d", of->error);
         return of->error;
       }
       //debug(D_NOTICE, "size=%u offset=%llu diff=%u rs=%u\n", size, offset, diff, ce->realsize);
@@ -2366,8 +2366,8 @@ static int fs_read(const char *path, char *buf, size_t size, off_t offset,
   }
   pthread_mutex_unlock(&pageslock);
   if (of->error){
+    debug(D_WARNING, "error is set to %d", of->error);
     ret=of->error;
-    of->error=0;
   }
   debug(D_NOTICE, "fs_read %s - %d", path, ret);
   return ret;
