@@ -53,6 +53,7 @@ pfs_settings fs_settings={
   .readaheadmin=64*1024,
   .readaheadmax=8*1024*1024,
   .readaheadmaxsec=12,
+  .maxunackedbytes=256*1024,
   .usessl=0,
   .timeout=30,
   .retrycnt=5
@@ -102,17 +103,17 @@ static int fs_inited = 0;
   binparam fdparam;\
   char __buff[32];\
   int __useidx;\
-  if (__of->fd){\
+  if ((__of)->fd){\
     fdparam.paramtype=PARAM_NUM;\
     fdparam.paramnamelen=2;\
     fdparam.paramname="fd";\
-    fdparam.un.num=__of->fd;\
+    fdparam.un.num=(__of)->fd;\
     __useidx=0;\
   }\
   else {\
     int __idx;\
     pthread_mutex_lock(&indexlock);\
-    __idx=(int64_t)filesopened-(int64_t)of->openidx;\
+    __idx=(int64_t)filesopened-(int64_t)(__of)->openidx;\
     fdparam.paramtype=PARAM_STR;\
     fdparam.paramnamelen=2;\
     fdparam.paramname="fd";\
@@ -235,6 +236,14 @@ typedef struct {
   uint32_t tries;
 } pagefile;
 
+typedef struct {
+  openfile *of;
+  off_t offset;
+  size_t length;
+  uint32_t tries;
+  char buff[];
+} writetask;
+
 #define wait_for_allowed_calls() do {pthread_mutex_lock(&calllock); pthread_mutex_unlock(&calllock); } while (0)
 
 static cacheheader *cachehead;
@@ -260,6 +269,13 @@ static pthread_cond_t treecond=PTHREAD_COND_INITIALIZER;
 
 static pthread_mutex_t wakelock=PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t wakecond=PTHREAD_COND_INITIALIZER;
+
+static pthread_mutex_t unacklock=PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t unackcond=PTHREAD_COND_INITIALIZER;
+
+
+static size_t unackedbytes=0;
+static size_t unackedsleepers=0;
 
 static int unsigned treesleep=0;
 static int processingtask=0;
@@ -2457,11 +2473,34 @@ static int fs_read(const char *path, char *buf, size_t size, off_t offset,
 }
 */
 
+static void fs_write_finished(void *_wt, binresult *res);
 
-static void fs_write_finished(void *_of, binresult *res){
+static void reschedule_write(writetask *wt){
+  check_for_reopen(wt->of);
+  debug(D_WARNING, "rescheduling write of %u bytes of file %s, tries=%u", (int unsigned)wt->length, wt->of->file->name, wt->tries);
+  wt->tries++;
+  fd_magick_start(wt->of);
+  cmd_data_callback("file_pwrite", wt->buff, wt->length, fs_write_finished, wt, fdparam, P_NUM("offset", wt->offset));
+  fd_magick_stop();
+}
+
+
+static void fs_write_finished(void *_wt, binresult *res){
+  writetask *wt;
   openfile *of;
   binresult *sub;
-  of=(openfile *)_of;
+  wt=(writetask *)_wt;
+  of=wt->of;
+
+  if (!res && wt->tries<fs_settings.retrycnt)
+    return reschedule_write(wt);
+  
+  pthread_mutex_lock(&unacklock);
+  unackedbytes-=wt->length;
+  if (unackedsleepers && unackedbytes<fs_settings.maxunackedbytes)
+    pthread_cond_broadcast(&unackcond);
+  pthread_mutex_unlock(&unacklock);
+
   pthread_mutex_lock(&of->mutex);
   if (!res){
     debug(D_WARNING, "failed! setting error to %d of file %s", NOT_CONNECTED_ERR, of->file->name);
@@ -2492,6 +2531,7 @@ static void fs_write_finished(void *_of, binresult *res){
 decref:
   dec_openfile_refcnt_locked(of);
   pthread_mutex_unlock(&of->mutex);
+  free(_wt);
 }
 
 static int fs_write_setting(openfile *of, const char *buf, size_t size, off_t offset){
@@ -2510,6 +2550,7 @@ static int fs_write(const char *path, const char *buf, size_t size, off_t offset
                       struct fuse_file_info *fi){
   cacheentry *ce;
   openfile *of;
+  writetask *wt;
   uint32_t frompageoff, topageoff;
   of=(openfile *)((uintptr_t)fi->fh);
   debug(D_NOTICE, "fs_write %s", path);
@@ -2518,6 +2559,17 @@ static int fs_write(const char *path, const char *buf, size_t size, off_t offset
     return fs_write_setting(of, buf, size, offset);
 
   wait_for_allowed_calls();
+  
+  pthread_mutex_lock(&unacklock);
+  while (unackedbytes>=fs_settings.maxunackedbytes){
+    unackedsleepers++;
+    pthread_cond_wait(&unackcond, &unacklock);
+    unackedsleepers--;
+  }
+  unackedbytes+=size;
+  pthread_mutex_unlock(&unacklock);
+  
+  check_for_reopen(of);
 
   pthread_mutex_lock(&of->mutex);
   if (of->error){
@@ -2528,8 +2580,14 @@ static int fs_write(const char *path, const char *buf, size_t size, off_t offset
   of->unackcomd++;
   of->refcnt++;
   pthread_mutex_unlock(&of->mutex);
+  wt=(writetask *)malloc(sizeof(writetask)+size);
+  wt->of=of;
+  wt->offset=offset;
+  wt->length=size;
+  wt->tries=0;
+  memcpy(wt->buff, buf, size);
   fd_magick_start(of);
-  cmd_data_callback("file_pwrite", buf, size, fs_write_finished, of, fdparam, P_NUM("offset", offset));
+  cmd_data_callback("file_pwrite", buf, size, fs_write_finished, wt, fdparam, P_NUM("offset", offset));
   fd_magick_stop();
   frompageoff=offset/cachehead->pagesize;
   topageoff=((offset+size+cachehead->pagesize-1)/cachehead->pagesize)-1;
