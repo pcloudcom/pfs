@@ -2088,6 +2088,30 @@ static int fs_release(const char *path, struct fuse_file_info *fi){
   return 0;
 }
 
+static void check_old_data_finished(void *_pf, binresult *res);
+
+static void reschedule_check_old_data(pagefile *pf){
+  openfile *of;
+  cacheentry *page;
+  unsigned char md5b[MD5_DIGEST_LENGTH];
+  char md5x[MD5_DIGEST_LENGTH*2];
+  int unsigned j;
+  page=pf->page;
+  of=pf->of;
+  check_for_reopen(of);
+  debug(D_WARNING, "rescheduling check of page %u (offset %u) of file %s, tries=%u", page->offset, page->offset*cachehead->pagesize, of->file->name, pf->tries);
+  pf->tries++;
+  MD5((unsigned char *)cachepages+page->pageid*cachehead->pagesize, page->realsize, md5b);
+  for (j=0; j<MD5_DIGEST_LENGTH; j++){
+    md5x[j*2]=hexdigits[md5b[j]/16];
+    md5x[j*2+1]=hexdigits[md5b[j]%16];
+  }
+  fd_magick_start(of);
+  cmd_callback("file_pread_ifmod", check_old_data_finished, pf, fdparam, P_LSTR("md5", md5x, MD5_DIGEST_LENGTH*2),
+                     P_NUM("offset", page->offset*cachehead->pagesize), P_NUM("count", cachehead->pagesize));
+  fd_magick_stop();
+}
+
 static void check_old_data_finished(void *_pf, binresult *res){
   binresult *rs;
   pagefile *pf;
@@ -2100,7 +2124,8 @@ static void check_old_data_finished(void *_pf, binresult *res){
   pf=(pagefile *)_pf;
   page=pf->page;
   of=pf->of;
-  free(_pf);
+  if (!res && pf->tries<fs_settings.retrycnt)
+    return reschedule_check_old_data(pf);
   //  debug(D_NOTICE, "check_old_data_finished\n");
   if (!res)
     goto err;
@@ -2121,6 +2146,7 @@ static void check_old_data_finished(void *_pf, binresult *res){
     }
     pthread_mutex_unlock(&pageslock);
     dec_openfile_refcnt(of);
+    free(_pf);
     return;
   }
   else if (rs->num)
@@ -2132,8 +2158,18 @@ static void check_old_data_finished(void *_pf, binresult *res){
   len=find_res(res, "data")->num;
 //  debug(D_NOTICE, "check_old_data_finished request 0x%08x!\n", (int)len);
   ret=readall_timeout(sock, pagedata, len, PAGE_READ_TIMEOUT);
-  if (ret==-1)
-    goto err;
+  if (ret==-1){
+    debug(D_WARNING, "failed reading page %u (offset %u) of file %s, tries=%u", page->offset, page->offset*cachehead->pagesize, of->file->name, pf->tries);
+    need_reconnect=1;
+    if (pf->tries<fs_settings.retrycnt){
+      of->connectionid=UINT32_MAX;
+      reschedule_readahead(pf);
+      move_first_task_to_tail();
+      return;
+    }
+    else
+      goto err;
+  }
   page->realsize=ret;
   page->lastuse=tm;
   page->fetchtime=tm;
@@ -2148,6 +2184,7 @@ static void check_old_data_finished(void *_pf, binresult *res){
   pthread_mutex_unlock(&pageslock);
 //  debug(D_NOTICE, "check_old_data_finished out - ok\n");
   dec_openfile_refcnt(of);
+  free(_pf);
   return;
 err:
   debug(D_WARNING, "failed! setting error to %d of file %s", NOT_CONNECTED_ERR, of->file->name);
@@ -2162,6 +2199,7 @@ err:
   }
   pthread_mutex_unlock(&pageslock);
   dec_openfile_refcnt(of);
+  free(_pf);
 //  debug(D_NOTICE, "check_old_data_finished out - err\n");
 }
 

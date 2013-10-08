@@ -18,7 +18,9 @@
  {D_NOTICE, "NOTICE"}\
 }
 
+#ifndef DEBUG_LEVEL
 #define DEBUG_LEVEL D_WARNING
+#endif
 
 #define DEBUG_FILE "/tmp/pfs.log"
 
