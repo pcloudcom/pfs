@@ -1818,14 +1818,14 @@ static void schedule_readahead_finished(void *_pf, binresult *res){
     goto err;
   }
   rs=find_res(res, "result");
-  if (!rs || rs->type!=PARAM_NUM || (rs->num && rs->num!=1007)){ // 1007 - invalid or closed file descriptor
+  if (!rs || rs->type!=PARAM_NUM || (rs->num && rs->num!=1007 && rs->num!=5004)){ // 1007 - invalid or closed file descriptor, 5004 Read error. Try reopening the file.
     if (!rs || rs->type!=PARAM_NUM)
       debug(D_BUG, "bad rs!");
     else
       debug(D_WARNING, "error %u!", (int unsigned)rs->num);
     goto err;
   }
-  if (rs->num==1007){
+  if (rs->num==1007 || rs->num==5004){
     if (pf->tries<fs_settings.retrycnt){
       of->connectionid=UINT32_MAX;
       return reschedule_readahead(pf);
@@ -2517,6 +2517,10 @@ static void fs_write_finished(void *_wt, binresult *res){
       pthread_cond_broadcast(&of->cond);
   }
   else if (sub->num!=0){
+    if ((sub->num==1007 || sub->num==5003) && wt->tries<fs_settings.retrycnt){
+      of->connectionid=UINT32_MAX;
+      return reschedule_write(wt);
+    }
     debug(D_ERROR, "error %u", (int unsigned)sub->num);
     of->error=convert_error(sub->num);
     if (of->waitcmd)
