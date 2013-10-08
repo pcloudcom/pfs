@@ -634,13 +634,9 @@ static binresult *do_cmd(const char *command, size_t cmdlen, const void *data, s
   return res;
 }
 
-static void cancel_all(){
-  task *t, *t2, *tn;
+static void cancel_tasks(task *t){
+  task *t2, *tn;
   debug(D_WARNING, "called");
-  pthread_mutex_lock(&taskslock);
-  t=tasks;
-  tasks=NULL;
-  pthread_mutex_unlock(&taskslock);
   t2=NULL;
   // reverse list so oldest tasks get cancelled/rescheduled first
   while (t){
@@ -673,11 +669,13 @@ static void cancel_all(){
 
 static void cancel_all_and_reconnect(){
   binresult *res;
+  task *t;
   apisock null;
   debug(D_WARNING, "cancel_all_and_reconnect");
 //  cancel_all();
   null.ssl=NULL;
   null.sock=-1;
+  pthread_mutex_lock(&taskslock);
   pthread_mutex_lock(&writelock);
   debug(D_NOTICE, "cancel_all_and_reconnect - after write lock");
   api_close(sock);
@@ -690,8 +688,10 @@ static void cancel_all_and_reconnect(){
       debug(D_WARNING, "cancel_all_and_reconnect - failed to connect");
       sock=&null;
       pthread_mutex_unlock(&writelock);
+      pthread_mutex_unlock(&taskslock);
       sleep(1);
 //      cancel_all();
+      pthread_mutex_lock(&taskslock);
       pthread_mutex_lock(&writelock);
       sock=NULL;
     }
@@ -706,6 +706,7 @@ static void cancel_all_and_reconnect(){
         if (find_res(res, "result")->num!=0){
           debug(D_ERROR, "cancel_all_and_reconnect - problem on login, exiting");
           pthread_mutex_unlock(&writelock);
+          pthread_mutex_unlock(&taskslock);
           exit(1);
         }
         free(res);
@@ -713,11 +714,14 @@ static void cancel_all_and_reconnect(){
     }
   } while (!sock);
   // sleep(1); - why do we need that sleep?
+  t=tasks;
+  tasks=NULL;
   pthread_mutex_unlock(&writelock);
+  pthread_mutex_unlock(&taskslock);
   pthread_mutex_lock(&indexlock);
   connectionid++;
   pthread_mutex_unlock(&indexlock);
-  cancel_all();
+  cancel_tasks(t);
   debug(D_NOTICE, "cancel_all_and_reconnect leave");
 }
 
@@ -1852,7 +1856,7 @@ static void schedule_readahead_finished(void *_pf, binresult *res){
   free(_pf);
   return;
 err:
-  debug(D_WARNING, "failed! NC error");
+  debug(D_WARNING, "failed! setting error to %d of file %s", NOT_CONNECTED_ERR, of->file->name);
   of->error=NOT_CONNECTED_ERR;
   pthread_mutex_lock(&pageslock);
   page->waiting=0;
@@ -1975,8 +1979,6 @@ static void fs_open_finished(void *_of, binresult *res){
       of->fd=find_res(res, "fd")->num;
     }
   }
-  else
-    of->error=NOT_CONNECTED_ERR;
   dec_openfile_refcnt_locked(of);
   pthread_mutex_unlock(&of->mutex);
 }
@@ -2148,7 +2150,7 @@ static void check_old_data_finished(void *_pf, binresult *res){
   dec_openfile_refcnt(of);
   return;
 err:
-  debug(D_WARNING, "check_old_data_finished error (null)");
+  debug(D_WARNING, "failed! setting error to %d of file %s", NOT_CONNECTED_ERR, of->file->name);
   of->error=NOT_CONNECTED_ERR;
   pthread_mutex_lock(&pageslock);
   list_del(page);
@@ -2424,7 +2426,7 @@ static void fs_write_finished(void *_of, binresult *res){
   of=(openfile *)_of;
   pthread_mutex_lock(&of->mutex);
   if (!res){
-    debug(D_NOTICE, "fs_write_finished - error - %u", of->waitcmd);
+    debug(D_WARNING, "failed! setting error to %d of file %s", NOT_CONNECTED_ERR, of->file->name);
     of->error=NOT_CONNECTED_ERR;
     if (of->waitcmd)
       pthread_cond_broadcast(&of->cond);
@@ -2432,13 +2434,13 @@ static void fs_write_finished(void *_of, binresult *res){
   }
   sub=find_res(res, "result");
   if (!sub || sub->type!=PARAM_NUM){
-    debug(D_BUG, "fs_write_finished EIO");
+    debug(D_BUG, "EIO");
     of->error=-EIO;
     if (of->waitcmd)
       pthread_cond_broadcast(&of->cond);
   }
   else if (sub->num!=0){
-    debug(D_ERROR, "fs_write_finished error %u", (int unsigned)sub->num);
+    debug(D_ERROR, "error %u", (int unsigned)sub->num);
     of->error=convert_error(sub->num);
     if (of->waitcmd)
       pthread_cond_broadcast(&of->cond);
@@ -2516,7 +2518,7 @@ static void fs_ftruncate_finished(void *_of, binresult *res){
   debug(D_NOTICE, "fs_ftruncate_finished - %p", _of);
   pthread_mutex_lock(&of->mutex);
   if (!res){
-    debug(D_NOTICE, "fs_ftruncate_finished error");
+    debug(D_WARNING, "failed! setting error to %d of file %s", NOT_CONNECTED_ERR, of->file->name);
     of->error=NOT_CONNECTED_ERR;
     pthread_cond_broadcast(&of->cond);
     dec_openfile_refcnt_locked(of);
