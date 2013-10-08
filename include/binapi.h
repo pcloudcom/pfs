@@ -81,6 +81,7 @@ typedef struct {
 int hasdata(apisock *sock);
 int writeall(apisock *sock, const void *ptr, size_t len);
 ssize_t readall(apisock *sock, void *ptr, size_t len);
+ssize_t readall_timeout(apisock *sock, void *ptr, size_t len, long sec);
 binresult *get_result(apisock *sock);
 binresult *do_send_command(apisock *sock, const char *command, size_t cmdlen, binparam *params, size_t paramcnt, int64_t datalen, int readres);
 
