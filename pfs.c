@@ -1478,8 +1478,14 @@ static int fs_getattr(const char *path, struct stat *stbuf){
     pthread_mutex_unlock(&treelock);
     return -ENOENT;
   }
+#ifdef _DARWIN_FEATURE_64_BIT_INODE
+  stbuf->st_birthtime=entry->createtime;
+  stbuf->st_ctime=entry->modifytime;
+  stbuf->st_mtime=entry->modifytime;
+#else
   stbuf->st_ctime=entry->createtime;
   stbuf->st_mtime=entry->modifytime;
+#endif
   if (entry->isfolder){
     stbuf->st_mode=S_IFDIR | 0755;
     stbuf->st_nlink=entry->tfolder.foldercnt+2;
