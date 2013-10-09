@@ -26,7 +26,12 @@
 
 #define debug(level, ...) do {if (level<=DEBUG_LEVEL) do_debug(__FILE__, __FUNCTION__, __LINE__, level, __VA_ARGS__);} while (0)
 
-void do_debug(const char *file, const char *function, int unsigned line, int unsigned level, const char *fmt, ...);
+void do_debug(const char *file, const char *function, int unsigned line, int unsigned level, const char *fmt, ...)
+#if defined(__GNUC__)
+  __attribute__ ((cold))
+  __attribute__ ((format (printf, 5, 6)))
+#endif
+;
 
 typedef struct
 {

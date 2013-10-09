@@ -1051,11 +1051,11 @@ static void diff_create_file(binresult *meta, time_t mtime){
   name=find_res(meta, "deletedfileid");
   if (name){
     uint64_t old_id=name->num;
-    debug(D_NOTICE, "create-> deleted old file\n");
+    debug(D_NOTICE, "create-> deleted old file");
     f=get_file_by_id(old_id);
     if (f){
       f->parent->modifytime=mtime;
-      debug(D_NOTICE, "deleted old file %s\n", f->name);
+      debug(D_NOTICE, "deleted old file %s", f->name);
       delete_file(f, 1);
     }
   }
@@ -1092,11 +1092,11 @@ static void diff_modifyfile_file(binresult *meta, time_t mtime){
   res = find_res(meta, "deletedfileid");
   if (res){
     uint64_t old_id = res->num;
-    debug(D_NOTICE, "deleted old file\n");
+    debug(D_NOTICE, "deleted old file");
     f=get_file_by_id(old_id);
     if (f){
       f->parent->modifytime=mtime;
-      debug(D_NOTICE, "deleted old file %s\n", f->name);
+      debug(D_NOTICE, "deleted old file %s", f->name);
       delete_file(f, 1);
     }
   }
@@ -1168,11 +1168,11 @@ static void diff_modifyfile_folder(binresult* meta, time_t mtime){
       uint64_t parent = res->num;
       if (parent != f->parent->tfolder.folderid){
         node* par;
-        debug(D_NOTICE, "folder - change parent %u -> %u\n", (uint32_t)f->parent->tfolder.folderid, (uint32_t)parent);
+        debug(D_NOTICE, "folder - change parent %u -> %u", (uint32_t)f->parent->tfolder.folderid, (uint32_t)parent);
         par=get_folder_by_id(parent);
         if (!par){
           pthread_mutex_unlock(&treelock);
-          debug(D_NOTICE, "modify folder out - no parent\n");
+          debug(D_WARNING, "modify folder out - no parent");
           return;
         }
         if (par->tfolder.nodecnt>=par->tfolder.nodealloc){
@@ -1242,7 +1242,7 @@ static void process_diff(binresult *diff){
   event=find_res(diff, "event");
   meta=find_res(diff, "metadata");
   tm=find_res(diff, "time")->num+timeoff;
-  debug(D_NOTICE, "diff -> %s\n", event->str);
+  debug(D_NOTICE, "diff -> %s", event->str);
   if (!event || event->type!=PARAM_STR)
     return;
   estr=event->str;
@@ -1315,7 +1315,7 @@ static void *diff_thread(void *ptr){
   monitorfds[0]=diffsock->sock;
   monitorfds[1]=wakefds[0];
   while (1){
-    debug(D_NOTICE, "sending diff\n");
+    debug(D_NOTICE, "sending diff");
     res=send_command_nb(diffsock, "diff", P_NUM("diffid", diffid), P_BOOL("block", 1), P_STR("timeformat", "timestamp"));
     if (res){
       if (hasdata(diffsock))
@@ -1352,11 +1352,11 @@ static void *diff_thread(void *ptr){
         free(res);
         monitorfds[0]=diffsock->sock;
         send_event_message(0, 3, NULL);
-        debug(D_NOTICE, "diff thread - reconnected!\n");
+        debug(D_NOTICE, "diff thread - reconnected!");
         continue;
       }
       free(res);
-      debug(D_ERROR, "diff thread - failed to reconnect, quitting!\n");
+      debug(D_ERROR, "diff thread - failed to reconnect, quitting!");
       exit(1);
     }
     sub=find_res(res, "result");
@@ -1613,7 +1613,7 @@ static int fs_creat(const char *path, mode_t mode, struct fuse_file_info *fi){
   openfile *of;
   uint64_t folderid, fd, fileid;
   uint32_t connid;
-  debug(D_NOTICE, "create - %s \n", path);
+  debug(D_NOTICE, "create - %s", path);
   wait_for_allowed_calls();
   pthread_mutex_lock(&treelock);
   entry=get_parent_folder(path, &name);
@@ -1772,7 +1772,7 @@ static void reschedule_readahead(pagefile *pf){
   page=pf->page;
   of=pf->of;
   check_for_reopen(of);
-  debug(D_WARNING, "rescheduling read of page %u (offset %u) of file %s, tries=%u", page->offset, page->offset*cachehead->pagesize, of->file->name, pf->tries);
+  debug(D_WARNING, "rescheduling read of page %lu (offset %lu) of file %s, tries=%u", (long unsigned)page->offset, (long unsigned)page->offset*cachehead->pagesize, of->file->name, pf->tries);
   pf->tries++;
   fd_magick_start(of);
   cmd_callback("file_pread", schedule_readahead_finished, pf, fdparam, P_NUM("offset", page->offset*cachehead->pagesize), P_NUM("count", cachehead->pagesize));
@@ -1814,7 +1814,7 @@ static void schedule_readahead_finished(void *_pf, binresult *res){
     return reschedule_readahead(pf);
   debug(D_NOTICE, "in");
   if (!res){
-    debug(D_WARNING, "no res page %u (offset %u) of file %s, tries=%u", page->offset, page->offset*cachehead->pagesize, of->file->name, pf->tries);
+    debug(D_WARNING, "no res page %lu (offset %lu) of file %s, tries=%u", (long unsigned)page->offset, (long unsigned)page->offset*cachehead->pagesize, of->file->name, pf->tries);
     goto err;
   }
   rs=find_res(res, "result");
@@ -1840,7 +1840,7 @@ static void schedule_readahead_finished(void *_pf, binresult *res){
   ret=readall_timeout(sock, pagedata, len, PAGE_READ_TIMEOUT);
   debug(D_NOTICE, "read %d!", (int)ret);
   if (ret==-1){
-    debug(D_WARNING, "failed reading page %u (offset %u) of file %s, tries=%u", page->offset, page->offset*cachehead->pagesize, of->file->name, pf->tries);
+    debug(D_WARNING, "failed reading page %lu (offset %lu) of file %s, tries=%u", (long unsigned)page->offset, (long unsigned)page->offset*cachehead->pagesize, of->file->name, pf->tries);
     need_reconnect=1;
     if (pf->tries<fs_settings.retrycnt){
       of->connectionid=UINT32_MAX;
@@ -2115,7 +2115,7 @@ static void reschedule_check_old_data(pagefile *pf){
   page=pf->page;
   of=pf->of;
   check_for_reopen(of);
-  debug(D_WARNING, "rescheduling check of page %u (offset %u) of file %s, tries=%u", page->offset, page->offset*cachehead->pagesize, of->file->name, pf->tries);
+  debug(D_WARNING, "rescheduling check of page %lu (offset %lu) of file %s, tries=%u", (long unsigned)page->offset, (long unsigned)page->offset*cachehead->pagesize, of->file->name, pf->tries);
   pf->tries++;
   MD5((unsigned char *)cachepages+page->pageid*cachehead->pagesize, page->realsize, md5b);
   for (j=0; j<MD5_DIGEST_LENGTH; j++){
@@ -2175,7 +2175,7 @@ static void check_old_data_finished(void *_pf, binresult *res){
 //  debug(D_NOTICE, "check_old_data_finished request 0x%08x!\n", (int)len);
   ret=readall_timeout(sock, pagedata, len, PAGE_READ_TIMEOUT);
   if (ret==-1){
-    debug(D_WARNING, "failed reading page %u (offset %u) of file %s, tries=%u", page->offset, page->offset*cachehead->pagesize, of->file->name, pf->tries);
+    debug(D_WARNING, "failed reading page %lu (offset %lu) of file %s, tries=%u", (long unsigned)page->offset, (long unsigned)page->offset*cachehead->pagesize, of->file->name, pf->tries);
     need_reconnect=1;
     if (pf->tries<fs_settings.retrycnt){
       of->connectionid=UINT32_MAX;
@@ -2345,7 +2345,8 @@ static int fs_read(const char *path, char *buf, size_t size, off_t offset,
   else if (readahead>fs_settings.readaheadmax)
     readahead=fs_settings.readaheadmax;
 
-  debug(D_NOTICE, "requested data with offset=%lu and size=%u (pages %u-%u), current speed=%u, reading ahead=%u", offset, size, frompageoff, topageoff, of->currentspeed, readahead);
+  debug(D_NOTICE, "requested data with offset=%lu and size=%lu (pages %u-%u), current speed=%lu, reading ahead=%lu", 
+        (long unsigned)offset, (long unsigned)size, frompageoff, topageoff, (long unsigned)of->currentspeed, (long unsigned)readahead);
 
   if (size<readahead/2){
     if (cachesec)
@@ -2353,7 +2354,7 @@ static int fs_read(const char *path, char *buf, size_t size, off_t offset,
     else
       check_old_data(of, offset, size);
     if (schedule_readahead(of, offset, readahead, size)){
-      debug(D_WARNING, "schedule_readahead returned error\n");
+      debug(D_WARNING, "schedule_readahead returned error");
       return NOT_CONNECTED_ERR;
     }
   }
@@ -2363,7 +2364,7 @@ static int fs_read(const char *path, char *buf, size_t size, off_t offset,
     else
       check_old_data(of, offset, size);
     if (schedule_readahead(of, offset, size+readahead, size)){
-      debug(D_WARNING, "schedule_readahead returned error\n");
+      debug(D_WARNING, "schedule_readahead returned error");
       return NOT_CONNECTED_ERR;
     }
   }
@@ -3146,14 +3147,14 @@ static int get_auth(const char* username, const char* pass)
   if (res){
     sub=find_res(res, "result");
     if (!sub || sub->type!=PARAM_NUM || sub->num!=0){
-      debug(D_NOTICE, "auth failed! - %u\n", (uint32_t)sub->num);
+      debug(D_NOTICE, "auth failed! - %u", (uint32_t)sub->num);
       free(res);
       return 1;
     }
     au=find_res(res, "auth");
     if (au){
       strncpy(localauth, au->str, 64+7);
-      debug(D_NOTICE, "got auth %s\n", localauth);
+      debug(D_NOTICE, "got auth %s", localauth);
       auth = localauth;
       free(res);
       return 0;
