@@ -387,7 +387,7 @@ void do_debug(const char *file, const char *function, int unsigned line, int uns
   fflush(log);
 }
   
-static binresult *find_res(binresult *res, const char *key){
+static binresult *do_find_res(binresult *res, const char *key){
   int unsigned i;
   if (!res || res->type!=PARAM_HASH)
     return NULL;
@@ -396,6 +396,18 @@ static binresult *find_res(binresult *res, const char *key){
       return res->hash[i].value;
   return NULL;
 }
+
+#define find_res_check do_find_res
+#define find_res(res, key) ({\
+    binresult *res__=res;\
+    const char *key__=key;\
+    if (!res__)\
+      debug(D_WARNING, "find_res called with NULL result");\
+    res__=do_find_res(res__, key__);\
+    if (!res__)\
+      debug(D_ERROR, "find_res could not find key %s", key__);\
+    res__;\
+  })
 
 #if defined(MINGW) || defined(_WIN32)
 
@@ -825,7 +837,7 @@ static void *receive_thread(void *ptr){
       cancel_all_and_reconnect();
       continue;
     }
-    id=find_res(res, "id");
+    id=find_res_check(res, "id");
     if (!id || id->type!=PARAM_NUM){
       free(res);
       debug(D_WARNING, "receive_thread - no ID, could be a nop or truncate");
@@ -850,7 +862,7 @@ static void *receive_thread(void *ptr){
       debug(D_BUG, "could not find task %lu", (long unsigned)id->num);
       continue;
     }
-    sub=find_res(res, "data");
+    sub=find_res_check(res, "data");
     rhasdata=sub && sub->type==PARAM_DATA;
     /* !!! IMPORTANT !!!
      * if we have TASK_TYPE_WAIT, t is on the stack of the thread waiting on t->cond, therefore no free
@@ -1048,7 +1060,7 @@ static void diff_create_file(binresult *meta, time_t mtime){
   parentid=find_res(meta, "parentfolderid")->num;
   pthread_mutex_lock(&treelock);
 
-  name=find_res(meta, "deletedfileid");
+  name=find_res_check(meta, "deletedfileid");
   if (name){
     uint64_t old_id=name->num;
     debug(D_NOTICE, "create-> deleted old file");
@@ -1089,7 +1101,7 @@ static void diff_modifyfile_file(binresult *meta, time_t mtime){
   pthread_mutex_lock(&treelock);
 
 
-  res = find_res(meta, "deletedfileid");
+  res = find_res_check(meta, "deletedfileid");
   if (res){
     uint64_t old_id = res->num;
     debug(D_NOTICE, "deleted old file");
@@ -1240,7 +1252,7 @@ static void process_diff(binresult *diff){
   const char *estr;
   time_t tm;
   event=find_res(diff, "event");
-  meta=find_res(diff, "metadata");
+  meta=find_res_check(diff, "metadata");
   tm=find_res(diff, "time")->num+timeoff;
   debug(D_NOTICE, "diff -> %s", event->str);
   if (!event || event->type!=PARAM_STR)
@@ -1261,14 +1273,14 @@ static void process_diff(binresult *diff){
       diff_delete_file(meta, tm);
     return;
   }
-  meta=find_res(diff, "share");
+  meta=find_res_check(diff, "share");
   if (meta && meta->type==PARAM_HASH){
     uint64_t diffid=find_res(diff, "diffid")->num;
     char *snstr;
     int fr=0;
-    if ((sn=find_res(meta, "sharename")))
+    if ((sn=find_res_check(meta, "sharename")))
       snstr=(char *)sn->str;
-    else if ((sn=find_res(meta, "folderid"))){
+    else if ((sn=find_res_check(meta, "folderid"))){
       pthread_mutex_lock(&treelock);
       node *f=get_folder_by_id(sn->num);
       if (!f){
