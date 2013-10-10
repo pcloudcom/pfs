@@ -2563,6 +2563,7 @@ static int fs_write(const char *path, const char *buf, size_t size, off_t offset
   openfile *of;
   writetask *wt;
   uint32_t frompageoff, topageoff;
+  int triedwake;
   of=(openfile *)((uintptr_t)fi->fh);
   debug(D_NOTICE, "fs_write %s", path);
 
@@ -2571,10 +2572,27 @@ static int fs_write(const char *path, const char *buf, size_t size, off_t offset
 
   wait_for_allowed_calls();
   
+  triedwake=0;
   pthread_mutex_lock(&unacklock);
   while (unackedbytes>=fs_settings.maxunackedbytes){
     unackedsleepers++;
-    pthread_cond_wait(&unackcond, &unacklock);
+    if (triedwake){
+      if (pthread_cond_wait_timeout(&unackcond, &unacklock)){
+        unackedsleepers--;
+        pthread_mutex_unlock(&unacklock);
+        return NOT_CONNECTED_ERR;
+      }
+    }
+    else{
+      if (pthread_cond_wait_sec(&unackcond, &unacklock, INITIAL_COND_TIMEOUT_SEC)){
+        triedwake=1;
+        unackedsleepers--;
+        pthread_mutex_unlock(&unacklock);
+        try_to_wake_data();
+        pthread_mutex_lock(&unacklock);
+        unackedsleepers++;
+      }
+    }
     unackedsleepers--;
   }
   unackedbytes+=size;
