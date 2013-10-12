@@ -1,6 +1,7 @@
 #include <sys/types.h>
 #include "sockets.h"
 #include <stdlib.h>
+#include <fcntl.h>
 #include <unistd.h>
 #include <errno.h>
 #include "pfs.h"
@@ -167,20 +168,36 @@ static ssize_t readallssl_timeout(SSL *ssl, int sock, void *ptr, size_t len, lon
   ssize_t rd;
   fd_set rfds;
   struct timeval timeout;
-  int ret;
+  int ret, flags, err;
   rd=0;
   FD_ZERO(&rfds);
   FD_SET(sock, &rfds);
+/* set the socket to non-blocking, this will probably need and ifdef for Win32
+ * this is needed in order not to let SSL_read hang when connection drops while
+ * receiving an SSL packet.
+ */
+  flags=fcntl(sock, F_GETFL, 0);
+  fcntl(sock, F_SETFL, flags | O_NONBLOCK);
   while (rd<len){
     timeout.tv_sec=sec;
     timeout.tv_usec=0;
-    if (!SSL_pending(ssl) && select(sock+1, &rfds, NULL, NULL, &timeout)<=0)
-      return -1;
+    if (!SSL_pending(ssl) && select(sock+1, &rfds, NULL, NULL, &timeout)<=0){
+      rd=-1;
+      break;
+    }
     ret=SSL_read(ssl, ptr+rd, len-rd);
-    if (ret<=0)
-      return -1;
+    if (ret<=0){
+      if (ret<0){
+        err=SSL_get_error(ssl, ret);
+        if (err==SSL_ERROR_WANT_READ || err==SSL_ERROR_WANT_WRITE)
+          continue;
+      }
+      rd=-1;
+      break;
+    }
     rd+=ret;
   }
+  fcntl(sock, F_SETFL, flags);
   return rd;
 }
 
