@@ -362,10 +362,10 @@ void do_debug(const char *file, const char *function, int unsigned line, int uns
     int unsigned level;
     const char *name;
   } debug_levels[]=DEBUG_LEVELS;
+  static FILE *log=NULL;
   char dttime[32], format[512];
   va_list ap;
   const char *errname;
-  FILE *log=NULL;
   int unsigned i;
   time_t currenttime;
   errname="BAD_ERROR_CODE";
