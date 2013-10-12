@@ -8,8 +8,10 @@
 #include <stdio.h>
 #include <time.h>
 #include <fuse.h>
+#include <ctype.h>
 #include <errno.h>
 #include <openssl/md5.h>
+#include <openssl/sha.h>
 #include "common.h"
 #include "settings.h"
 
@@ -3171,33 +3173,82 @@ static struct fuse_operations fs_oper={
   .unlink   = fs_unlink,
   .rename   = fs_rename,
   .chmod    = fs_chmod,
-  .utimens = fs_utimens
+  .utimens  = fs_utimens
 };
+
+static void sha1_hex(char *sha1hex, ...){
+  const char *str;
+  size_t len;
+  va_list ap;
+  SHA_CTX ctx;
+  unsigned char sha1b[SHA_DIGEST_LENGTH];
+  SHA1_Init(&ctx);
+  va_start(ap, sha1hex);
+  while ((str=va_arg(ap, const char *))){
+    len=strlen(str);
+    SHA1_Update(&ctx, str, len);
+  }
+  va_end(ap);
+  SHA1_Final(sha1b, &ctx);
+  for (len=0; len<SHA_DIGEST_LENGTH; len++){
+    sha1hex[len*2]=hexdigits[sha1b[len]/16];
+    sha1hex[len*2+1]=hexdigits[sha1b[len]%16];
+  }
+  sha1hex[SHA_DIGEST_LENGTH*2]=0;
+}
+
+static char *tolower_str(const char *str){
+  char *ret;
+  size_t i, len;
+  len=strlen(str)+1;
+  ret=(char *)malloc(len);
+  for (i=0; i<len; i++)
+    ret[i]=tolower(str[i]);
+  return ret;
+}
 
 static int get_auth(const char* username, const char* pass)
 {
   binresult *res, *sub, *au;
+  char *digest=NULL;
+  char *userlow;
   static char localauth[64+8];
+  char sha1username[SHA_DIGEST_LENGTH*2+2], sha1pass[SHA_DIGEST_LENGTH*2+2];
   debug(D_NOTICE, "auth: %s, %s\n", username, pass);
-  res=send_command(sock, "userinfo", P_STR("username", username), P_STR("password", pass), P_BOOL("getauth", 1));
+  res=send_command(sock, "getdigest");
+  if (!res)
+    goto err1;
+  sub=find_res(res, "digest");
+  if (!sub || sub->type!=PARAM_STR)
+    goto err1;
+  digest=strdup(sub->str);
+  free(res);
+  userlow=tolower_str(username);
+  sha1_hex(sha1username, userlow, NULL);
+  free(userlow);
+  sha1_hex(sha1pass, pass, sha1username, digest, NULL);
+  res=send_command(sock, "userinfo", P_STR("username", username), P_STR("digest", digest), P_LSTR("passworddigest", sha1pass, SHA_DIGEST_LENGTH*2), P_BOOL("getauth", 1));
+  free(digest);
+  digest=NULL;
   if (res){
     sub=find_res(res, "result");
-    if (!sub || sub->type!=PARAM_NUM || sub->num!=0){
+    if (!sub || sub->type!=PARAM_NUM || sub->num!=0)
       debug(D_NOTICE, "auth failed! - %u", (uint32_t)sub->num);
-      free(res);
-      return 1;
+    else {
+      au=find_res(res, "auth");
+      if (au){
+        strncpy(localauth, au->str, 64+7);
+        debug(D_NOTICE, "got auth %s", localauth);
+        auth = localauth;
+        free(res);
+        return 0;
+      }
     }
-    au=find_res(res, "auth");
-    if (au){
-      strncpy(localauth, au->str, 64+7);
-      debug(D_NOTICE, "got auth %s", localauth);
-      auth = localauth;
-      free(res);
-      return 0;
-    }
-    free(res);
   }
-  return 1;
+err1:
+  free(digest);
+  free(res);
+  return -1;
 }
 
 int pfs_main(int argc, char **argv, const pfs_params* params){
@@ -3290,7 +3341,7 @@ int pfs_main(int argc, char **argv, const pfs_params* params){
 
 #ifndef SERVICE
 static int parse_pfs_param(int * i, int argc, char ** argv, pfs_params* params){
-  if ((!strcmp(argv[*i], "-u") || !strcmp(argv[*i], "--user")) && *i+1 < argc) {
+  if ((!strcmp(argv[*i], "-u") || !strcmp(argv[*i], "--username")) && *i+1 < argc) {
     ++*i;
     params->username = argv[*i];
     ++*i;
@@ -3298,13 +3349,15 @@ static int parse_pfs_param(int * i, int argc, char ** argv, pfs_params* params){
   }
   if ((!strcmp(argv[*i], "-p") || !strcmp(argv[*i], "--password")) && *i+1 < argc) {
     ++*i;
-    params->pass = argv[*i];
+    params->pass = strdup(argv[*i]);
+    memset(argv[*i], 0, strlen(argv[*i]));
     ++*i;
     return 1;
   }
   if ((!strcmp(argv[*i], "-a") || !strcmp(argv[*i], "--auth")) && *i+1 < argc){
     ++*i;
-    params->auth = argv[*i];
+    params->auth = strdup(argv[*i]);
+    memset(argv[*i], 0, strlen(argv[*i]));
     ++*i;
     return 1;
   }
