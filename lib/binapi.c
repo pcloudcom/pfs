@@ -71,11 +71,20 @@ static int writeallfd(int sock, const void *ptr, size_t len){
 }
 
 static int writeallssl(SSL *ssl, const void *ptr, size_t len){
-  int res;
+  int res, err;
   while (len){
     res=SSL_write(ssl, ptr, len);
     if (res<=0){
-      debug(D_WARNING, "SSL error %d", SSL_get_error(ssl, res));
+      err=SSL_get_error(ssl, res);
+      if (err==SSL_ERROR_WANT_READ || err==SSL_ERROR_WANT_WRITE)
+        continue;
+      if (err==SSL_ERROR_SYSCALL){
+        if (errno==EAGAIN || errno==EWOULDBLOCK || errno==EINTR)
+          continue;
+        debug(D_WARNING, "SSL error SSL_ERROR_SYSCALL errno=%d, %s", (int)errno, strerror(errno));
+      }
+      else
+        debug(D_WARNING, "SSL error %d", err);
       return -1;
     }
     len-=res;
@@ -116,12 +125,21 @@ static ssize_t readallfd(int sock, void *ptr, size_t len){
 
 static ssize_t readallssl(SSL *ssl, void *ptr, size_t len){
   ssize_t rd;
-  int ret;
+  int ret, err;
   rd=0;
   while (rd<len){
     ret=SSL_read(ssl, ptr+rd, len-rd);
     if (ret<=0){
-      debug(D_WARNING, "SSL error %d", SSL_get_error(ssl, ret));
+      err=SSL_get_error(ssl, ret);
+      if (err==SSL_ERROR_WANT_READ || err==SSL_ERROR_WANT_WRITE)
+        continue;
+      if (err==SSL_ERROR_SYSCALL){
+        if (errno==EAGAIN || errno==EWOULDBLOCK || errno==EINTR)
+          continue;
+        debug(D_WARNING, "SSL error SSL_ERROR_SYSCALL errno=%d, %s", (int)errno, strerror(errno));
+      }
+      else
+        debug(D_WARNING, "SSL error %d", err);
       return -1;
     }
     rd+=ret;
@@ -196,6 +214,11 @@ static ssize_t readallssl_timeout(SSL *ssl, int sock, void *ptr, size_t len, lon
       err=SSL_get_error(ssl, ret);
       if (err==SSL_ERROR_WANT_READ || err==SSL_ERROR_WANT_WRITE)
         continue;
+      else if (err==SSL_ERROR_SYSCALL){
+        if (errno==EAGAIN || errno==EWOULDBLOCK || errno==EINTR)
+          continue;
+        debug(D_WARNING, "SSL error SSL_ERROR_SYSCALL errno=%d, %s", (int)errno, strerror(errno));
+      }
       else
         debug(D_WARNING, "SSL error %d", err);
       rd=-1;
