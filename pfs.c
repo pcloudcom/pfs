@@ -1818,6 +1818,15 @@ static void move_first_task_to_tail(){
   pthread_mutex_unlock(&taskslock);
 }
 
+static void reset_conn_id(openfile *of){
+  of->connectionid=UINT32_MAX;
+  if (of->fd){
+    pthread_mutex_lock(&writelock);
+    send_command_nb(sock, "file_close", P_NUM("fd", of->fd));
+    pthread_mutex_unlock(&writelock);
+  }
+}
+
 static void schedule_readahead_finished(void *_pf, binresult *res){
   binresult *rs;
   pagefile *pf;
@@ -1847,7 +1856,7 @@ static void schedule_readahead_finished(void *_pf, binresult *res){
   }
   if (rs->num==1007 || rs->num==5004){
     if (pf->tries<fs_settings.retrycnt){
-      of->connectionid=UINT32_MAX;
+      reset_conn_id(of);
       return reschedule_readahead(pf);
     }
     else
@@ -2539,7 +2548,7 @@ static void fs_write_finished(void *_wt, binresult *res){
   }
   else if (sub->num!=0){
     if ((sub->num==1007 || sub->num==5003) && wt->tries<fs_settings.retrycnt){
-      of->connectionid=UINT32_MAX;
+      reset_conn_id(of);
       return reschedule_write(wt);
     }
     debug(D_ERROR, "error %u", (int unsigned)sub->num);
