@@ -57,9 +57,9 @@ static int writeallfd(int sock, const void *ptr, size_t len){
   while (len){
     res=send(sock, ptr, len, 0);
     if (res==-1){
-      debug(D_NOTICE, " ---  send failed with errno %d\n", (int)errno);
+      debug(D_WARNING, "send failed: %s", strerror(errno));
       if (errno==EINTR || errno==EAGAIN){
-        debug(D_NOTICE, " --- try again...\n");
+        debug(D_NOTICE, " --- try again...");
         continue;
       }
       return -1;
@@ -74,8 +74,10 @@ static int writeallssl(SSL *ssl, const void *ptr, size_t len){
   int res;
   while (len){
     res=SSL_write(ssl, ptr, len);
-    if (res<=0)
+    if (res<=0){
+      debug(D_WARNING, "SSL error %d", SSL_get_error(ssl, res));
       return -1;
+    }
     len-=res;
     ptr+=res;
   }
@@ -95,18 +97,17 @@ static ssize_t readallfd(int sock, void *ptr, size_t len){
   while (rd<len){
     ret=recv(sock, ptr+rd, len-rd, 0);
     if (ret==0){
-      debug(D_NOTICE, "   ---  read - socket closed properly... \n");
+      debug(D_WARNING, "remote end closed connection");
       return -1;
     }
     else if (ret==-1){
-      debug(D_NOTICE, "   ---  read - error errno %d\n", (int)errno);
+      debug(D_WARNING, "recv failed: %s", strerror(errno));
       if (errno==EINTR){
-        debug(D_NOTICE, "   ---  read - try again \n");
+        debug(D_NOTICE, "   ---  read - try again");
         continue;
       }
-      else{
+      else
         return -1;
-      }
     }
     rd+=ret;
   }
@@ -119,8 +120,10 @@ static ssize_t readallssl(SSL *ssl, void *ptr, size_t len){
   rd=0;
   while (rd<len){
     ret=SSL_read(ssl, ptr+rd, len-rd);
-    if (ret<=0)
+    if (ret<=0){
+      debug(D_WARNING, "SSL error %d", SSL_get_error(ssl, ret));
       return -1;
+    }
     rd+=ret;
   }
   return rd;
@@ -142,17 +145,19 @@ static ssize_t readallfd_timeout(int sock, void *ptr, size_t len, long sec){
   while (rd<len){
     timeout.tv_sec=sec;
     timeout.tv_usec=0;
-    if (select(sock+1, &rfds, NULL, NULL, &timeout)<=0)
+    if (select(sock+1, &rfds, NULL, NULL, &timeout)<=0){
+      debug(D_WARNING, "read timedout, %lu sec", sec);
       return -1;
+    }
     ret=recv(sock, ptr+rd, len-rd, 0);
     if (ret==0){
-      debug(D_NOTICE, "   ---  read - socket closed properly... \n");
+      debug(D_WARNING, "remote end closed connection");
       return -1;
     }
     else if (ret==-1){
-      debug(D_NOTICE, "   ---  read - error errno %d\n", (int)errno);
+      debug(D_WARNING, "read failed: %s", strerror(errno));
       if (errno==EINTR){
-        debug(D_NOTICE, "   ---  read - try again \n");
+        debug(D_NOTICE, "   ---  read - try again");
         continue;
       }
       else{
@@ -182,16 +187,17 @@ static ssize_t readallssl_timeout(SSL *ssl, int sock, void *ptr, size_t len, lon
     timeout.tv_sec=sec;
     timeout.tv_usec=0;
     if (!SSL_pending(ssl) && select(sock+1, &rfds, NULL, NULL, &timeout)<=0){
+      debug(D_WARNING, "read timedout, %lu sec", sec);
       rd=-1;
       break;
     }
     ret=SSL_read(ssl, ptr+rd, len-rd);
     if (ret<=0){
-      if (ret<0){
-        err=SSL_get_error(ssl, ret);
-        if (err==SSL_ERROR_WANT_READ || err==SSL_ERROR_WANT_WRITE)
-          continue;
-      }
+      err=SSL_get_error(ssl, ret);
+      if (err==SSL_ERROR_WANT_READ || err==SSL_ERROR_WANT_WRITE)
+        continue;
+      else
+        debug(D_WARNING, "SSL error %d", err);
       rd=-1;
       break;
     }
