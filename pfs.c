@@ -582,11 +582,11 @@ static binresult *do_cmd(const char *command, size_t cmdlen, const void *data, s
     pthread_mutex_lock(&mymutex);
   }
   pthread_mutex_lock(&taskslock);
-  debug(D_NOTICE, "Do-cmd send %u", (uint32_t)taskid);
   myid=ptask->taskid=taskid++;
   ptask->next=tasks;
   tasks=ptask;
   pthread_mutex_unlock(&taskslock);
+  debug(D_NOTICE, "Do-cmd send %lu", (long unsigned int)myid);
   memcpy(nparams+1, params, paramcnt*sizeof(binparam));
   nparams[0].paramname="id";
   nparams[0].paramnamelen=2;
@@ -627,12 +627,12 @@ static binresult *do_cmd(const char *command, size_t cmdlen, const void *data, s
     if (res){
       debug(D_NOTICE, "##### Do-cmd wait %s, %" PRIu64, command, myid);
       if (pthread_cond_wait_sec(&mycond, &mymutex, INITIAL_COND_TIMEOUT_SEC)){
-        debug(D_WARNING, "##### Do-cmd wait %s, %" PRIu64 " failed! Try to wake", command, myid);
-        if(try_to_wake_data() || pthread_cond_wait_timeout(&mycond, &mymutex)){
+        debug(D_WARNING, "##### Do-cmd wait %s, %" PRIu64 "first timeout, try to wake", command, myid);
+        if (try_to_wake_data() || pthread_cond_wait_timeout(&mycond, &mymutex)){
           if (remove_task(ptask, myid))
-            debug(D_WARNING, "##### Do-cmd %s, %" PRIu64 " failed to wake.", command, myid);
+            debug(D_WARNING, "##### Do-cmd %s, %" PRIu64 " second timeout, task removed", command, myid);
           else
-            debug(D_WARNING, "##### Do-cmd %s, %" PRIu64 " task not found.", command, myid);
+            debug(D_WARNING, "##### Do-cmd %s, %" PRIu64 " second timeout, task not", command, myid);
           pthread_mutex_unlock(&mymutex);
           pthread_cond_destroy(&mycond);
           pthread_mutex_destroy(&mymutex);
@@ -640,9 +640,11 @@ static binresult *do_cmd(const char *command, size_t cmdlen, const void *data, s
         }
       }
       debug(D_NOTICE, "##### Do-cmd got %s", command);
+      res=ptask->result;
     }
+    else
+      res=NULL;
     pthread_mutex_unlock(&mymutex);
-    res=ptask->result;
   }
   else if (!res){
     if (remove_task(ptask, myid)){
