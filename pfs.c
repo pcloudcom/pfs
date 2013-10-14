@@ -382,7 +382,7 @@ void do_debug(const char *file, const char *function, int unsigned line, int uns
   }
   time(&currenttime);
   time_format(currenttime, dttime);
-  snprintf(format, sizeof(format), "%s pid %lu %s: %s:%u (function %s): %s\n", dttime, (long unsigned int)pthread_self(), errname, file, line, function, fmt);
+  snprintf(format, sizeof(format), "%s pid %u %s: %s:%u (function %s): %s\n", dttime, (unsigned int)pthread_self(), errname, file, line, function, fmt);
   format[sizeof(format)-1]=0;
   va_start(ap, fmt);
   vfprintf(log, format, ap);
