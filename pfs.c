@@ -627,7 +627,7 @@ static binresult *do_cmd(const char *command, size_t cmdlen, const void *data, s
     if (res){
       debug(D_NOTICE, "##### Do-cmd wait %s, %" PRIu64, command, myid);
       if (pthread_cond_wait_sec(&mycond, &mymutex, INITIAL_COND_TIMEOUT_SEC)){
-        debug(D_WARNING, "##### Do-cmd wait %s, %" PRIu64 "first timeout, try to wake", command, myid);
+        debug(D_WARNING, "##### Do-cmd wait %s, %" PRIu64 " first timeout, try to wake", command, myid);
         if (try_to_wake_data() || pthread_cond_wait_timeout(&mycond, &mymutex)){
           if (remove_task(ptask, myid))
             debug(D_WARNING, "##### Do-cmd %s, %" PRIu64 " second timeout, task removed", command, myid);
@@ -823,6 +823,7 @@ static void *receive_thread(void *ptr){
       res=get_result(sock);
     else if (r==0){
       pipe_read(wakefds[0], &b, 1);
+      debug(D_WARNING, "wake message received, calling reconnect_if_needed");
       reconnect_if_needed();
       pthread_mutex_lock(&wakelock);
       pthread_cond_broadcast(&wakecond);
