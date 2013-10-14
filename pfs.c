@@ -3265,7 +3265,7 @@ void die_with_usage() {
   fprintf(stderr, "Supported options:\n");
   fprintf(stderr, "\t--cache_size - cache size in bytes\n");
   fprintf(stderr, "\t--page_size - page size in bytes\n");
-  fprintf(stderr, "\t--use_ssl (0|1) - use SSL for connecting\n");
+  fprintf(stderr, "\t--ssl - use SSL for connecting\n");
   exit(2);
 }
 
