@@ -139,6 +139,7 @@ typedef struct _task {
   pthread_cond_t *cond;
   task_callback call;
   uint32_t type;
+  char ready;
 } task;
 
 struct _node;
@@ -381,7 +382,7 @@ void do_debug(const char *file, const char *function, int unsigned line, int uns
   }
   time(&currenttime);
   time_format(currenttime, dttime);
-  snprintf(format, sizeof(format), "%s %s: %s:%u (function %s): %s\n", dttime, errname, file, line, function, fmt);
+  snprintf(format, sizeof(format), "%s pid %lu %s: %s:%u (function %s): %s\n", dttime, (long unsigned int)pthread_self(), errname, file, line, function, fmt);
   format[sizeof(format)-1]=0;
   va_start(ap, fmt);
   vfprintf(log, format, ap);
@@ -555,7 +556,6 @@ static int remove_task(task *ptask, uint64_t id){
 static binresult *do_cmd(const char *command, size_t cmdlen, const void *data, size_t datalen, binparam *params, size_t paramcnt,
                          task_callback callback, void *callbackptr){
   uint64_t myid;
-  pthread_mutexattr_t mattr;
   pthread_mutex_t mymutex;
   pthread_cond_t mycond;
   binparam nparams[paramcnt+1];
@@ -564,9 +564,7 @@ static binresult *do_cmd(const char *command, size_t cmdlen, const void *data, s
   int cnt;
   debug(D_NOTICE, "Do-cmd enter %s, %c", command, callback?'C':'D');
 
-  pthread_mutexattr_init(&mattr);
-  pthread_mutexattr_settype(&mattr, PTHREAD_MUTEX_RECURSIVE);
-  pthread_mutex_init(&mymutex, &mattr);
+  pthread_mutex_init(&mymutex, NULL);
   pthread_cond_init(&mycond, NULL);
 
   if (callback){
@@ -580,6 +578,7 @@ static binresult *do_cmd(const char *command, size_t cmdlen, const void *data, s
     ptask->mutex=&mymutex;
     ptask->cond=&mycond;
     ptask->type=TASK_TYPE_WAIT;
+    ptask->ready=0;
     pthread_mutex_lock(&mymutex);
   }
   pthread_mutex_lock(&taskslock);
@@ -630,19 +629,14 @@ static binresult *do_cmd(const char *command, size_t cmdlen, const void *data, s
       if (pthread_cond_wait_sec(&mycond, &mymutex, INITIAL_COND_TIMEOUT_SEC)){
         debug(D_WARNING, "##### Do-cmd wait %s, %" PRIu64 " failed! Try to wake", command, myid);
         if(try_to_wake_data() || pthread_cond_wait_timeout(&mycond, &mymutex)){
-          if (remove_task(ptask, myid)){
-            pthread_mutex_unlock(&mymutex);
-            pthread_cond_destroy(&mycond);
-            pthread_mutex_destroy(&mymutex);
+          if (remove_task(ptask, myid))
             debug(D_WARNING, "##### Do-cmd %s, %" PRIu64 " failed to wake.", command, myid);
-            // see above
-            // reconnect_if_needed();
-            return NULL;
-          }
-          else{
+          else
             debug(D_WARNING, "##### Do-cmd %s, %" PRIu64 " task not found.", command, myid);
-            return NULL;
-          }
+          pthread_mutex_unlock(&mymutex);
+          pthread_cond_destroy(&mycond);
+          pthread_mutex_destroy(&mymutex);
+          return NULL;
         }
       }
       debug(D_NOTICE, "##### Do-cmd got %s", command);
@@ -659,7 +653,6 @@ static binresult *do_cmd(const char *command, size_t cmdlen, const void *data, s
 
   pthread_cond_destroy(&mycond);
   pthread_mutex_destroy(&mymutex);
-  pthread_mutexattr_destroy(&mattr);
   debug(D_NOTICE, "Do-cmd exit %s, %p", command, res);
   return res;
 }
@@ -800,17 +793,18 @@ static void *receive_thread(void *ptr){
   if (get_pipe(wakefds))
     return NULL;
   datawakefd=wakefds[1];
-  monitorfds[1]=wakefds[0];
+  monitorfds[0]=wakefds[0];
   while (1){
-    monitorfds[0]=sock->sock;
+    monitorfds[1]=sock->sock;
     if (hasdata(sock))
-      r=0;
+      r=1;
     else{
       if (tasks){
         timeout.tv_sec=RECONNECT_TIMEOUT;
         timeout.tv_usec=0;
         r=ready_read(2, monitorfds, &timeout);
         if (r==-1){
+          debug(D_WARNING, "read socket timeouted, reconnecting");
           cancel_all_and_reconnect();
           continue;
         }
@@ -823,9 +817,9 @@ static void *receive_thread(void *ptr){
           continue;
       }
     }
-    if (r==0)
+    if (r==1)
       res=get_result(sock);
-    else if (r==1){
+    else if (r==0){
       pipe_read(wakefds[0], &b, 1);
       reconnect_if_needed();
       pthread_mutex_lock(&wakelock);
@@ -833,9 +827,12 @@ static void *receive_thread(void *ptr){
       pthread_mutex_unlock(&wakelock);
       continue;
     }
-    else
+    else{
+      debug(D_BUG, "ready_read returned %d, should not happen", r);
       break; // should not happen
+    }
     if (!res){
+      debug(D_WARNING, "get_result returned NULL, reconnecting");
       cancel_all_and_reconnect();
       continue;
     }
