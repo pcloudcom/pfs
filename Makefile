@@ -15,7 +15,7 @@ else
     endif
 endif
 
-CFLAGS=-Wall -g -O2 $(FUSE_FLAGS) -Iinclude -D_GNU_SOURCE
+CFLAGS=-Wall -g -O2 $(FUSE_FLAGS) -Iinclude -D_GNU_SOURCE -DDEBUG_LEVEL=0
 
 all: mount.pfs
 

@@ -3257,6 +3257,15 @@ err1:
   return -1;
 }
 
+void die_with_usage() {
+  fprintf(stderr, "Usage: mount.pfs (--auth AUTHSTR| --username USER --password PASSWORD) [options] MOUNTPOINT\n");
+  fprintf(stderr, "Supported options:\n");
+  fprintf(stderr, "\t--cache_size - cache size in bytes\n");
+  fprintf(stderr, "\t--page_size - page size in bytes\n");
+  fprintf(stderr, "\t--ssl - use SSL for connecting\n");
+  exit(2);
+}
+
 int pfs_main(int argc, char **argv, const pfs_params* params){
   int r = 0;
   binresult *res, *subres;
@@ -3273,6 +3282,9 @@ int pfs_main(int argc, char **argv, const pfs_params* params){
   if (params->page_size)
     debug(D_NOTICE, "cache page size: %lu B", (unsigned long)params->page_size);
 
+
+  if ( !( params->auth || (params->username && params->pass)) )
+    die_with_usage();
 
   if (params->cache_size){
     if (params->cache_size >= MIN_CACHE_SIZE && params->cache_size <= MAX_CACHE_SIZE)
@@ -3305,23 +3317,23 @@ int pfs_main(int argc, char **argv, const pfs_params* params){
 
   res=send_command(sock, "userinfo", P_STR("auth", auth));
   if(!res){
-    fprintf(stderr, "Login failed");
+    fprintf(stderr, "Login failed\n");
     return EACCES;
   }
   subres=find_res(res, "result");
   if (!subres || subres->type!=PARAM_NUM || subres->num!=0){
-    fprintf(stderr, "Login failed (%s)", find_res(res, "error")->str);
+    fprintf(stderr, "Login failed (%s)\n", find_res(res, "error")->str);
     return EACCES;
   }
   free(res);
   res=send_command(diffsock, "userinfo", P_STR("auth", auth));
   if(!res){
-    fprintf(stderr, "Login failed");
+    fprintf(stderr, "Login failed\n");
     return EACCES;
   }
   subres=find_res(res, "result");
   if (!subres || subres->type!=PARAM_NUM || subres->num!=0){
-    fprintf(stderr, "Login failed (%s)", find_res(res, "error")->str);
+    fprintf(stderr, "Login failed (%s)\n", find_res(res, "error")->str);
     return EACCES;
   }
   free(res);
