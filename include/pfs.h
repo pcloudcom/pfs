@@ -24,15 +24,8 @@
 
 #define DEBUG_FILE "/tmp/pfs.log"
 
-#if DEBUG_LEVEL == 0
-
-#define debug(level, ...)
-
-#else
-
 #define debug(level, ...) do {if (level<=DEBUG_LEVEL) do_debug(__FILE__, __FUNCTION__, __LINE__, level, __VA_ARGS__);} while (0)
 
-#endif
 
 void do_debug(const char *file, const char *function, int unsigned line, int unsigned level, const char *fmt, ...)
 #if defined(__GNUC__)
