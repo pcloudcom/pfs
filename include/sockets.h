@@ -45,6 +45,10 @@
 #define AI_V4MAPPED	    0x0040
 #endif
 
+#ifndef EWOULDBLOCK
+#define EWOULDBLOCK WSAEWOULDBLOCK
+#endif
+
 #endif
 
 #endif // SOCKETS_H_INCLUDED

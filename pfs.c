@@ -33,6 +33,13 @@
 #define index(str, c) strchr(str, c)
 #define rindex(str, c) strrchr(str, c)
 
+struct tm *gmtime_r(const time_t *timep, struct tm *result)
+{
+    struct tm * res = gmtime(timep);
+    *result = *res;
+    return result;
+}
+
 int dumb_socketpair(SOCKET socks[2], int make_overlapped);
 
 #ifndef ENOTCONN
@@ -368,6 +375,7 @@ void do_debug(const char *file, const char *function, int unsigned line, int uns
   va_list ap;
   const char *errname;
   int unsigned i;
+  unsigned int pid;
   time_t currenttime;
   errname="BAD_ERROR_CODE";
   for (i=0; i<sizeof(debug_levels)/sizeof(debug_levels[0]); i++)
@@ -382,14 +390,19 @@ void do_debug(const char *file, const char *function, int unsigned line, int uns
   }
   time(&currenttime);
   time_format(currenttime, dttime);
-  snprintf(format, sizeof(format), "%s pid %u %s: %s:%u (function %s): %s\n", dttime, (unsigned int)pthread_self(), errname, file, line, function, fmt);
+#if !defined(MINGW) && !defined(_WIN32)
+  pid = (unsigned int)pthread_self();
+#else
+  pid = (unsigned int)pthread_self().p;
+#endif
+  snprintf(format, sizeof(format), "%s pid %u %s: %s:%u (function %s): %s\n", dttime, pid, errname, file, line, function, fmt);
   format[sizeof(format)-1]=0;
   va_start(ap, fmt);
   vfprintf(log, format, ap);
   va_end(ap);
   fflush(log);
 }
-  
+
 static binresult *do_find_res(binresult *res, const char *key){
   int unsigned i;
   if (!res || res->type!=PARAM_HASH)
@@ -2324,7 +2337,7 @@ static int fs_read(const char *path, char *buf, size_t size, off_t offset,
     return fs_read_setting(of, buf, size, offset);
 
   wait_for_allowed_calls();
-  
+
   check_for_reopen(of);
 
   debug(D_NOTICE, "fs_read %s, off: %lu, size: %u", path, offset, (uint32_t)size);
@@ -2374,7 +2387,7 @@ static int fs_read(const char *path, char *buf, size_t size, off_t offset,
   else if (readahead>fs_settings.readaheadmax)
     readahead=fs_settings.readaheadmax;
 
-  debug(D_NOTICE, "requested data with offset=%lu and size=%lu (pages %u-%u), current speed=%lu, reading ahead=%lu", 
+  debug(D_NOTICE, "requested data with offset=%lu and size=%lu (pages %u-%u), current speed=%lu, reading ahead=%lu",
         (long unsigned)offset, (long unsigned)size, frompageoff, topageoff, (long unsigned)of->currentspeed, (long unsigned)readahead);
 
   if (size<readahead/2){
@@ -2524,7 +2537,7 @@ static void fs_write_finished(void *_wt, binresult *res){
 
   if (!res && wt->tries<fs_settings.retrycnt)
     return reschedule_write(wt);
-  
+
   pthread_mutex_lock(&unacklock);
   unackedbytes-=wt->length;
   if (unackedsleepers && unackedbytes<fs_settings.maxunackedbytes)
@@ -2594,7 +2607,7 @@ static int fs_write(const char *path, const char *buf, size_t size, off_t offset
     return fs_write_setting(of, buf, size, offset);
 
   wait_for_allowed_calls();
-  
+
   triedwake=0;
   pthread_mutex_lock(&unacklock);
   while (unackedbytes>=fs_settings.maxunackedbytes){
@@ -2620,7 +2633,7 @@ static int fs_write(const char *path, const char *buf, size_t size, off_t offset
   }
   unackedbytes+=size;
   pthread_mutex_unlock(&unacklock);
-  
+
   check_for_reopen(of);
 
   pthread_mutex_lock(&of->mutex);

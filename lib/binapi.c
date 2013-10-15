@@ -199,8 +199,16 @@ static ssize_t readallssl_timeout(SSL *ssl, int sock, void *ptr, size_t len, lon
  * this is needed in order not to let SSL_read hang when connection drops while
  * receiving an SSL packet.
  */
+#if !defined(MINGW) && !defined(_WIN32)
   flags=fcntl(sock, F_GETFL, 0);
   fcntl(sock, F_SETFL, flags | O_NONBLOCK);
+#else
+{
+  unsigned long mode=1;
+  ioctlsocket(sock, FIONBIO, &mode);
+}
+#endif
+
   while (rd<len){
     timeout.tv_sec=sec;
     timeout.tv_usec=0;
@@ -226,7 +234,14 @@ static ssize_t readallssl_timeout(SSL *ssl, int sock, void *ptr, size_t len, lon
     }
     rd+=ret;
   }
+#if !defined(MINGW) && !defined(_WIN32)
   fcntl(sock, F_SETFL, flags);
+#else
+{
+  unsigned long mode=0;
+  ioctlsocket(sock, FIONBIO, &mode);
+}
+#endif
   return rd;
 }
 

@@ -147,16 +147,16 @@ DWORD WINAPI ThreadProc(LPVOID lpParam)
 
     getDataFromRegistry(KEY_AUTH, auth);
     storeKey(KEY_AUTH, "");
-    debug("auth:%s\n", auth);
+    debug(D_NOTICE, "auth:%s", auth);
     getDataFromRegistry(KEY_CACHE_SIZE, buff);
     cachesize = (size_t)atol(buff);
-    debug("cache size:%u\n", cachesize);
+    debug(D_NOTICE, "cache size:%u", cachesize);
 
     // Stored data is in MB - convert to bytes
     if (cachesize > 0 && cachesize < 3000)
         cachesize *= 1024*1024;
     getDataFromRegistry(KEY_USE_SSL, buff);
-    debug("use SSL :%s\n", buff);
+    debug(D_NOTICE, "use SSL :%s", buff);
     if (!strcmp(buff, "ssl") || !strcmp(buff, "SSL"))
         params.use_ssl = 1;
 
@@ -178,11 +178,11 @@ DWORD WINAPI ThreadProc(LPVOID lpParam)
     int res = pfs_main(2, argv, &params);
     if (res == ENOTCONN)
     {
-        debug("Send NotConnected msg\n");
+        debug(D_NOTICE, "Send NotConnected msg");
     }
     else if (res == EACCES)
     {
-        debug("Send Access denied msg\n");
+        debug(D_NOTICE, "Send Access denied msg");
     }
     return res;
 }
@@ -191,7 +191,7 @@ DWORD WINAPI ThreadProc(LPVOID lpParam)
 VOID WINAPI ServiceStart(const wchar_t * config_file)
 {
     HANDLE hThread = CreateThread(NULL, 0, ThreadProc, NULL, 0, NULL);
-    debug("Thread created\n");
+    debug(D_NOTICE, "Thread created");
     unsigned int loop = 0;
     ReportStatusToSCMgr(SERVICE_RUNNING, NO_ERROR, 0);
     while (!bStop)
@@ -206,21 +206,21 @@ VOID WINAPI ServiceStart(const wchar_t * config_file)
     }
     ReportStatusToSCMgr(SERVICE_STOP_PENDING, NO_ERROR, 0);
 
-    debug("Service main - waiting\n");
+    debug(D_NOTICE, "Service main - waiting");
     WaitForSingleObject(hThread, 5000);
 
-    debug("Service main - closing\n");
+    debug(D_NOTICE, "Service main - closing");
     CloseHandle(hThread);
 
     ReportStatusToSCMgr(SERVICE_STOPPED, NO_ERROR, 0);
 
-    debug("Service main - exit\n");
+    debug(D_NOTICE, "Service main - exit");
 }
 
 
 VOID WINAPI ServiceStop()
 {
-    debug("ServiceStop\n");
+    debug(D_NOTICE, "ServiceStop");
     DokanUnmountType Unmount = NULL;
     HMODULE dokanDll = LoadLibraryW(DOKAN_DLL);
     if (dokanDll) Unmount=(DokanUnmountType)GetProcAddress(dokanDll, "DokanUnmount");
@@ -228,7 +228,7 @@ VOID WINAPI ServiceStop()
     bStop=TRUE;
     if (mountPoint[0] != 'a' && Unmount)
     {
-        debug("Unmounting...\n");
+        debug(D_NOTICE, "Unmounting...");
         Unmount((WCHAR)mountPoint[0]);
     }
     if (dokanDll) FreeLibrary(dokanDll);
@@ -241,12 +241,12 @@ VOID WINAPI service_ctrl(DWORD dwCtrlCode)
     {
         case SERVICE_CONTROL_STOP:
             storeKey(KEY_DELETE, "+");
-            debug("SERVICE_CONTROL_STOP \n");
+            debug(D_NOTICE, "SERVICE_CONTROL_STOP");
             ReportStatusToSCMgr(SERVICE_STOP_PENDING, NO_ERROR, 0);
             ServiceStop();
             return;
         case SERVICE_CONTROL_SHUTDOWN:
-            debug("SERVICE_CONTROL_SHUTDOWN \n");
+            debug(D_NOTICE, "SERVICE_CONTROL_SHUTDOWN");
             ReportStatusToSCMgr(SERVICE_STOP_PENDING, NO_ERROR, 2000);
             ServiceStop();
             return;
@@ -266,7 +266,7 @@ void CmdInstallService(BOOL Start)
 
     if (GetModuleFileName(NULL, szPath, 512) == 0)
     {
-        printf( "Unable to install %S\n", SZSERVICEDISPLAYNAME);
+        printf("Unable to install %S\n", SZSERVICEDISPLAYNAME);
         return;
     }
 
@@ -384,7 +384,7 @@ void CmdRemoveService()
 
 VOID WINAPI service_main(DWORD dwArgc, LPTSTR *lpszArgv)
 {
-    debug("Called service main %d .\n", bStop);
+    debug(D_NOTICE, "Called service main %d .", bStop);
 
     if (bStop) return;
 
@@ -442,7 +442,7 @@ int main(int argc, char* args[])
         getDataFromRegistry(KEY_DELETE, buff);
         if (buff[0] == '+')
         {
-            debug ("Called main while service is stopping!\n");
+            debug (D_NOTICE, "Called main while service is stopping!");
             storeKey(KEY_DELETE, "");
             return 1;
         }
@@ -454,11 +454,11 @@ int main(int argc, char* args[])
             schService = OpenService(schSCManager, SZSERVICENAME, SERVICE_ALL_ACCESS);
             if (schService)
             {
-                debug("called main function - no args\n");
+                debug(D_NOTICE, "called main function - no args");
                 QueryServiceStatus(schService, &ssStatus);
                 if (ssStatus.dwCurrentState != SERVICE_STOPPED)
                 {
-                    debug("called main function - status %lu\n", ssStatus.dwCurrentState);
+                    debug(D_NOTICE, "called main function - status %lu", ssStatus.dwCurrentState);
                     return 1;
                 }
                 if (StartService(schService, 0, NULL))
