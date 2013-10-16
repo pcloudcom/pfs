@@ -8,6 +8,9 @@ InstallDirRegKey HKCU "Software\pCloud\Install" "Install_Dir"
 LicenseText "Terms of service: "
 LicenseData "license.rtf"
 
+ShowInstDetails nevershow
+ShowUninstDetails nevershow
+
 ;--------------------------------
 
 ; Pages
@@ -20,7 +23,9 @@ UninstPage instfiles
 ;--------------------------------
 
 !include nsProcess.nsh
-
+!include LogicLib.nsh
+!include x64.nsh
+!include WinVer.nsh
 
 !ifdef INNER
   OutFile "inst.exe"
@@ -38,6 +43,30 @@ Function .onInit
   WriteUninstaller "$%TEMP%\pfs-uninst.exe"
   Quit
 !endif
+
+  IntOp $0 ${SF_SELECTED} | ${SF_RO}
+
+  ${If} ${RunningX64}
+    ${If} ${IsWin2003}
+    ${ElseIf} ${IsWinVista}
+    ${ElseIf} ${IsWin2008}
+    ${ElseIf} ${IsWin2008R2}
+    ${ElseIf} ${IsWin7}
+    ${Else}
+      MessageBox MB_OK "Your OS is not supported. pCloud supports Windows 2003, Vista, 2008, 2008R2 and 7 for x64."
+      Abort
+    ${EndIf}
+  ${Else}
+    ${If} ${IsWinXP}
+    ${ElseIf} ${IsWin2003}
+    ${ElseIf} ${IsWinVista}
+    ${ElseIf} ${IsWin2008}
+    ${ElseIf} ${IsWin7}
+    ${Else}
+      MessageBox MB_OK "Your OS is not supported. pCloud supports Windows XP, 2003, Vista, 2008 and 7 for x86."
+      Abort
+    ${EndIf}
+  ${EndIf}
 FunctionEnd
 
 
@@ -61,21 +90,29 @@ Section "Install"
   File start.bat
   File stop.bat
   File restart.bat
-  File CreateTask.bat
-  File start.xml
-  File end.xml
+  
+  ${If} ${IsWinXP}
+    File VCRedist.exe
+    MessageBox MB_OK|MB_ICONINFORMATION "The redistributable package will be installed. It could take several minutes. Please be patient."
+    nsExec::Exec '"$INSTDIR\VCRedist.exe" /q'
+  ${Else}
+    File CreateTask.bat
+    File start.xml
+    File end.xml
+  ${EndIf}
+  
   File DokanInstall.exe
   File win_service.exe
   File pCloud.exe
   
   ClearErrors
-  ExecWait '"$INSTDIR\DokanInstall.exe" /S'
+  nsExec::Exec '"$INSTDIR\DokanInstall.exe" /S'
   IfErrors 0 noError
     MessageBox MB_OK|MB_ICONEXCLAMATION "There is a problem installing Dokan driver."
     Quit
   noError:
   
-  ExecWait '"$INSTDIR\start.bat" "$INSTDIR"'
+  nsExec::Exec '"$INSTDIR\start.bat" "$INSTDIR"'
   
   Delete  "$INSTDIR\DokanInstall.exe"
   
@@ -84,13 +121,19 @@ Section "Install"
   CreateShortCut "$DESKTOP\pCloud.lnk" "$INSTDIR\pCloud.exe" "" ""
   CreateShortCut "$SMPROGRAMS\PCloud\uninstall.lnk" "$INSTDIR\pfs-uninst.exe" "" ""
 
-  MessageBox MB_YESNO|MB_ICONQUESTION "Do you want to run pCloud automatically when Windows starts?" IDNO NoStartup
-    ExecWait '"$INSTDIR\CreateTask.bat" "$INSTDIR\pCloud.exe"'
-  NoStartup:
+  ${If} ${IsWinXP}
+    MessageBox MB_YESNO|MB_ICONQUESTION "Do you want to run pCloud automatically when Windows starts?" IDNO NoStartupXp
+      CreateShortCut "$SMSTARTUP\pCloud.lnk" "$INSTDIR\pCloud.exe" "" ""
+    NoStartupXp:
+  ${Else}
+    MessageBox MB_YESNO|MB_ICONQUESTION "Do you want to run pCloud automatically when Windows starts?" IDNO NoStartup
+      nsExec::Exec '"$INSTDIR\CreateTask.bat" "$INSTDIR\pCloud.exe"'
+    NoStartup:
+    Delete start.xml
+    Delete end.xml
+    Delete CreateTask.bat
+  ${EndIf}
   
-  Delete start.xml
-  Delete end.xml
-  Delete CreateTask.bat
   
   MessageBox MB_YESNO|MB_ICONQUESTION "A computer restart is required. Do you want to restart now?" IDNO NoReboot
     Reboot
@@ -98,8 +141,10 @@ Section "Install"
   Quit
   
   Installed:
-    MessageBox MB_OK|MB_ICONEXCLAMATION "There is a PCloud already installed on your system. Please uninstall old version first."
-  
+    MessageBox MB_YESNO|MB_ICONQUESTION "There is a PCloud already installed on your system. Uninstall old version now?" IDNO NoReboot
+  nsExec::Exec '"$INSTDIR\pfs-uninst.exe"'
+  Quit
+
 SectionEnd ; end the section
 
 
@@ -121,14 +166,24 @@ Section "Uninstall"
   DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\PCloud"
   DeleteRegKey HKCU "SOFTWARE\PCloud"
 
-  ExecWait '"$INSTDIR\stop.bat" "$INSTDIR"'
-  ExecWait 'schtasks /delete /tn "PCloud" /F'
+  nsExec::Exec '"$INSTDIR\stop.bat" "$INSTDIR"'
+  ${If} ${IsWinXP}
+    Delete "$SMSTARTUP\pCloud.lnk"
+  ${Else}
+    nsExec::Exec 'schtasks /delete /tn "PCloud" /F'
+  ${EndIf}
+  
+  ${If} ${IsWinXP}
+    MessageBox MB_OK|MB_ICONINFORMATION "The redistributable package will be removed. It could take several minutes. Please be patient."
+    nsExec::Exec '"$INSTDIR\VCRedist.exe" /qu'
+  ${EndIf}
   
   Delete "$INSTDIR\*.*"
     
   RMDir "$INSTDIR"
   Exec '"$PROGRAMFILES\Dokan\DokanLibrary\DokanUninstall.exe" /S'
- 
+  
+  
 NoStop:
   Quit
 SectionEnd

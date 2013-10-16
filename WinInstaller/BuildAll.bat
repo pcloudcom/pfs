@@ -9,7 +9,7 @@ call sign.bat win_service.exe
 "C:\Program Files (x86)\NSIS\makensis.exe" PCloud.nsi
 call sign.bat PCloudInstall.exe
 
-"C:\Program Files (x86)\NSIS\makensis.exe" PCloudXP.nsi
-call sign.bat PCloudInstallXP.exe
+rem "C:\Program Files (x86)\NSIS\makensis.exe" PCloudXP.nsi
+rem call sign.bat PCloudInstallXP.exe
 
 del inst.exe
