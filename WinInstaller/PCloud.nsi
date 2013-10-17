@@ -1,4 +1,3 @@
-; The name of the installer
 Name "pCloud"
 
 InstallDir $PROGRAMFILES\PCloud
@@ -143,6 +142,7 @@ Section "Install"
   Installed:
     MessageBox MB_YESNO|MB_ICONQUESTION "There is a PCloud already installed on your system. Uninstall old version now?" IDNO NoReboot
   nsExec::Exec '"$INSTDIR\pfs-uninst.exe"'
+  WriteRegStr "HKLM" "SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce" "Installer" $EXEPATH
   Quit
 
 SectionEnd ; end the section
