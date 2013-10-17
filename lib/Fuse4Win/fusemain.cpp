@@ -473,7 +473,7 @@ int impl_fuse_context::flush_file_buffers(LPCWSTR /*file_name*/,
 
 	if (hndl->is_dir())
 	{
-		if (!ops_.fsyncdir) return -EINVAL;
+		if (!ops_.fsyncdir) return 0;
 		fuse_file_info finfo(hndl->make_finfo());
 		return ops_.fsyncdir(hndl->get_name().c_str(),0,&finfo);
 	}
@@ -554,14 +554,14 @@ int impl_fuse_context::lock_file(LPCWSTR file_name, LONGLONG byte_offset, LONGLO
 			  PDOKAN_FILE_INFO dokan_file_info)
 {
 	//Not implemented yet. There's some mismatch between UNIX and Windows locking semantics.
-	return -EINVAL;
+	return 0;
 }
 
 int impl_fuse_context::unlock_file(LPCWSTR file_name, LONGLONG byte_offset, LONGLONG length,
 								 PDOKAN_FILE_INFO dokan_file_info)
 {
 	//Not implemented yet. There's some mismatch between UNIX and Windows locking semantics.
-	return -EINVAL;
+	return 0;
 }
 
 int impl_fuse_context::set_end_of_file(LPCWSTR	file_name, LONGLONG byte_offset,
@@ -614,8 +614,7 @@ int impl_fuse_context::set_file_time(PCWSTR file_name, const FILETIME* creation_
 				  PDOKAN_FILE_INFO dokan_file_info)
 {
 	if (!ops_.utimens && !ops_.utime) return -EINVAL;
-	if (!ops_.getattr)
-		return -EINVAL;
+	if (!ops_.getattr) return -EINVAL;
 
 	std::string fname=unixify(wchar_to_utf8_cstr(file_name));
 	CHECKED(check_and_resolve(&fname));

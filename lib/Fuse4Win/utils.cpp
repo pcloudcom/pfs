@@ -117,7 +117,7 @@ static struct errentry errtable[] = {
 	{  ERROR_INVALID_BLOCK,          ENOMEM    },  /* 9 */
 	{  ERROR_BAD_ENVIRONMENT,        E2BIG     },  /* 10 */
 	{  ERROR_BAD_FORMAT,             ENOEXEC   },  /* 11 */
-	{  ERROR_INVALID_ACCESS,         EINVAL    },  /* 12 */
+	{  ERROR_INVALID_ACCESS,         EACCES    },  /* 12 */
 	{  ERROR_INVALID_DATA,           EINVAL    },  /* 13 */
 	{  ERROR_INVALID_DRIVE,          ENOENT    },  /* 15 */
 	{  ERROR_CURRENT_DIRECTORY,      EACCES    },  /* 16 */
@@ -161,7 +161,7 @@ extern "C" int win32_error_to_errno(int win_res)
 	if (win_res<0) win_res=-win_res;
 	for (int f=0;f<errtable_size;++f)
 		if (errtable[f].oscode==(unsigned)win_res) return errtable[f].errnocode;
-	return EINVAL;
+	return 0;
 }
 
 extern "C" int errno_to_win32_error(int err)
