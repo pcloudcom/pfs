@@ -74,7 +74,7 @@ Section "Install"
   
   IfFileExists $INSTDIR\win_service.exe Installed
 
-  WriteRegStr HKCU SOFTWARE\NSISTest\BigNSISTest "Install_Dir" "$INSTDIR"
+  WriteRegStr HKCU "SOFTWARE\PCloud\pCloud" "Install_Dir" "$INSTDIR"
 
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\PCloud" "DisplayName" "PCloud Service"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\PCloud" "UninstallString" '"$INSTDIR\pfs-uninst.exe"'

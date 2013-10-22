@@ -130,7 +130,7 @@ static struct errentry errtable[] = {
 	{  ERROR_FILE_EXISTS,            EEXIST    },  /* 80 */
 	{  ERROR_CANNOT_MAKE,            EACCES    },  /* 82 */
 	{  ERROR_FAIL_I24,               EACCES    },  /* 83 */
-	{  ERROR_INVALID_PARAMETER,      EINVAL    },  /* 87 */
+//	{  ERROR_INVALID_PARAMETER,      EINVAL    },  /* 87 */
 	{  ERROR_NO_PROC_SLOTS,          EAGAIN    },  /* 89 */
 	{  ERROR_DRIVE_LOCKED,           EACCES    },  /* 108 */
 	{  ERROR_BROKEN_PIPE,            EPIPE     },  /* 109 */
