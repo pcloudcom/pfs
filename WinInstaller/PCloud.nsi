@@ -74,7 +74,7 @@ Section "Install"
   
   IfFileExists $INSTDIR\win_service.exe Installed
 
-  WriteRegStr HKCU "SOFTWARE\PCloud\pCloud" "Install_Dir" "$INSTDIR"
+  WriteRegStr HKLM "SOFTWARE\PCloud\pCloud" "Install_Dir" "$INSTDIR"
 
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\PCloud" "DisplayName" "PCloud Service"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\PCloud" "UninstallString" '"$INSTDIR\pfs-uninst.exe"'
@@ -165,6 +165,7 @@ Section "Uninstall"
 
   DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\PCloud"
   DeleteRegKey HKCU "SOFTWARE\PCloud"
+  DeleteRegKey HKLM "SOFTWARE\PCloud"
 
   nsExec::Exec '"$INSTDIR\stop.bat" "$INSTDIR"'
   ${If} ${IsWinXP}
