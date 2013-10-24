@@ -162,43 +162,33 @@ void setVolumeIcon(char letter, bool create)
     HRESULT hr;
     WCHAR data[MAX_PATH];
     DWORD cbDataSize = sizeof(data);
-
     HKEY hKey;
 
     char path[] = "Software\\Classes\\Applications\\explorer.exe\\Drives\\a\\DefaultIcon";
     path[sizeof(path)-sizeof("DefaultIcon")-2] = letter;
 
-    hr = RegOpenKeyEx(HKEY_LOCAL_MACHINE, L"Software\\PCloud\\pCloud", 0, KEY_READ, &hKey);
-    if (!hr)
+    if (create)
     {
-        hr = RegQueryValueEx(hKey, L"Install_Dir", NULL, NULL, (LPBYTE)data, &cbDataSize);
-        wcscat(data, L"\\pCloud.exe,0");
-        debug(D_ERROR, "%lu %S", hr, data);
-        RegCloseKey(hKey);
+        hr = RegOpenKeyEx(HKEY_LOCAL_MACHINE, L"Software\\PCloud\\pCloud", 0, KEY_READ, &hKey);
         if (!hr)
         {
-            if (create)
+            hr = RegQueryValueEx(hKey, L"Install_Dir", NULL, NULL, (LPBYTE)data, &cbDataSize);
+            wcscat(data, L"\\pCloud.exe,0");
+            RegCloseKey(hKey);
+            if (!hr)
             {
-                debug(D_ERROR, path);
                 hr = RegCreateKeyExA(HKEY_LOCAL_MACHINE, path, 0, NULL, 0, KEY_ALL_ACCESS, NULL, &hKey, NULL);
                 if(!hr)
                 {
                     hr = RegSetValueEx(hKey, NULL, 0, REG_SZ, (LPBYTE)data, 2*(wcslen(data)+1));
-                    if (!hr)debug(D_ERROR, "Ready!");
-                    else debug(D_ERROR, "fail!");
                     RegCloseKey(hKey);
                 }
-            }
-            else
-            {
-                hr = RegDeleteKeyA(HKEY_LOCAL_MACHINE, path);
-                debug(D_ERROR, "%lu, %s", hr, path);
             }
         }
     }
     else
     {
-        debug(D_ERROR, "first fail!");
+        hr = RegDeleteKeyA(HKEY_LOCAL_MACHINE, path);
     }
 }
 
