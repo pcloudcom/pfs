@@ -1,3 +1,12 @@
+pcloudfs (1.0+nmu1) unstable; urgency=low
+
+  [ Vasil Kolev ]
+  * Non-maintainer upload.
+  * Update to latest release 
+  * release
+
+ -- root <root@mx.celltruth.com>  Sat, 19 Oct 2013 08:22:55 +0000
+
 pcloudfs (1.0) unstable; urgency=low
 
   * Initial Release.

@@ -33,6 +33,38 @@ SERVICE_STATUS          ssStatus;
 
 typedef BOOL (__stdcall *DokanUnmountType)(WCHAR DriveLetter);
 
+#include <time.h>
+void do_debug(const char *file, const char *function, int unsigned line, int unsigned level, const char *fmt, ...){
+  static const struct {
+    int unsigned level;
+    const char *name;
+  } debug_levels[]=DEBUG_LEVELS;
+  static FILE *log=NULL;
+  char format[512];
+  va_list ap;
+  const char *errname;
+  int unsigned i;
+  time_t currenttime;
+  errname="BAD_ERROR_CODE";
+  for (i=0; i<sizeof(debug_levels)/sizeof(debug_levels[0]); i++)
+    if (debug_levels[i].level==level){
+      errname=debug_levels[i].name;
+      break;
+    }
+  if (!log){
+    log=fopen(DEBUG_FILE, "a+");
+    if (!log)
+      return;
+  }
+  time(&currenttime);
+  snprintf(format, sizeof(format), "%s: %s:%u (function %s): %s\n", errname, file, line, function, fmt);
+  format[sizeof(format)-1]=0;
+  va_start(ap, fmt);
+  vfprintf(log, format, ap);
+  va_end(ap);
+  fflush(log);
+}
+
 BOOL ReportStatusToSCMgr(DWORD dwCurrentState, DWORD dwWin32ExitCode, DWORD dwWaitHint)
 {
     static DWORD dwCheckPoint = 1;
@@ -125,6 +157,41 @@ int getIntFromRegistry(const char* key)
     return 0;
 }
 
+void setVolumeIcon(char letter, bool create)
+{
+    HRESULT hr;
+    WCHAR data[MAX_PATH];
+    DWORD cbDataSize = sizeof(data);
+    HKEY hKey;
+
+    char path[] = "Software\\Classes\\Applications\\explorer.exe\\Drives\\a\\DefaultIcon";
+    path[sizeof(path)-sizeof("DefaultIcon")-2] = letter;
+
+    if (create)
+    {
+        hr = RegOpenKeyEx(HKEY_LOCAL_MACHINE, L"Software\\PCloud\\pCloud", 0, KEY_READ, &hKey);
+        if (!hr)
+        {
+            hr = RegQueryValueEx(hKey, L"Install_Dir", NULL, NULL, (LPBYTE)data, &cbDataSize);
+            wcscat(data, L"\\pCloud.exe,0");
+            RegCloseKey(hKey);
+            if (!hr)
+            {
+                hr = RegCreateKeyExA(HKEY_LOCAL_MACHINE, path, 0, NULL, 0, KEY_ALL_ACCESS, NULL, &hKey, NULL);
+                if(!hr)
+                {
+                    hr = RegSetValueEx(hKey, NULL, 0, REG_SZ, (LPBYTE)data, 2*(wcslen(data)+1));
+                    RegCloseKey(hKey);
+                }
+            }
+        }
+    }
+    else
+    {
+        hr = RegDeleteKeyA(HKEY_LOCAL_MACHINE, path);
+    }
+}
+
 char mountPoint[3] = "a:";
 
 DWORD WINAPI ThreadProc(LPVOID lpParam)
@@ -140,7 +207,8 @@ DWORD WINAPI ThreadProc(LPVOID lpParam)
     getDataFromRegistry(KEY_PATH, buff);
     if (buff[0] && isFreeDevice(buff[0]))
         mountPoint[0] = buff[0];
-    else{
+    else
+    {
         mountPoint[0] = getFirstFreeDevice();
         storeKey(KEY_PATH, buff);
     }
@@ -174,8 +242,9 @@ DWORD WINAPI ThreadProc(LPVOID lpParam)
     params.username = username;
     params.use_ssl = 0;
     params.cache_size = cachesize?cachesize:512*1024*1024;
-
+    setVolumeIcon(mountPoint[0], true);
     int res = pfs_main(2, argv, &params);
+    setVolumeIcon(mountPoint[0], false);
     if (res == ENOTCONN)
     {
         debug(D_NOTICE, "Send NotConnected msg");
@@ -229,6 +298,7 @@ VOID WINAPI ServiceStop()
     if (mountPoint[0] != 'a' && Unmount)
     {
         debug(D_NOTICE, "Unmounting...");
+        setVolumeIcon(mountPoint[0], false);
         Unmount((WCHAR)mountPoint[0]);
     }
     if (dokanDll) FreeLibrary(dokanDll);
