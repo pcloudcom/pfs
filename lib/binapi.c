@@ -156,6 +156,7 @@ ssize_t readall(apisock *sock, void *ptr, size_t len){
 static ssize_t readallfd_timeout(int sock, void *ptr, size_t len, long sec){
   ssize_t ret, rd;
   fd_set rfds;
+  int sret;
   struct timeval timeout;
   rd=0;
   FD_ZERO(&rfds);
@@ -163,7 +164,10 @@ static ssize_t readallfd_timeout(int sock, void *ptr, size_t len, long sec){
   while (rd<len){
     timeout.tv_sec=sec;
     timeout.tv_usec=0;
-    if (select(sock+1, &rfds, NULL, NULL, &timeout)<=0){
+    do {
+      sret=select(sock+1, &rfds, NULL, NULL, &timeout);
+    } while (sret==-1 && errno==EINTR);
+    if (sret<=0){
       debug(D_WARNING, "read timedout, %lu sec", sec);
       return -1;
     }
@@ -212,10 +216,15 @@ static ssize_t readallssl_timeout(SSL *ssl, int sock, void *ptr, size_t len, lon
   while (rd<len){
     timeout.tv_sec=sec;
     timeout.tv_usec=0;
-    if (!SSL_pending(ssl) && select(sock+1, &rfds, NULL, NULL, &timeout)<=0){
-      debug(D_WARNING, "read timedout, %lu sec", sec);
-      rd=-1;
-      break;
+    if (!SSL_pending(ssl)){
+      do {
+        ret=select(sock+1, &rfds, NULL, NULL, &timeout);
+      } while (ret==-1 && errno==EINTR);
+      if (ret<=0){
+        debug(D_WARNING, "read timedout, %lu sec", sec);
+        rd=-1;
+        break;
+      }
     }
     ret=SSL_read(ssl, ptr+rd, len-rd);
     if (ret<=0){
