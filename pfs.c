@@ -496,7 +496,7 @@ static int get_pipe(int pipefd[2]){
 // should work on all platforms with select
 static int ready_read(int cnt, int *socks, struct timeval *timeout){
   fd_set rfds;
-  int max, i;
+  int max, i, ret;
   FD_ZERO(&rfds);
   max=0;
   for (i=0; i<cnt; i++){
@@ -505,7 +505,10 @@ static int ready_read(int cnt, int *socks, struct timeval *timeout){
     FD_SET(socks[i], &rfds);
   }
   max++;
-  if (select(max, &rfds, NULL, NULL, timeout)<=0){
+  do {
+    ret=select(max, &rfds, NULL, NULL, timeout);
+  } while (ret==-1 && errno==EINTR);
+  if (ret<=0){
     return -1;
   }
   for (i=0; i<cnt; i++)
