@@ -2117,7 +2117,13 @@ static void *wait_refcnt_thread(void *_of){
 
 static void fs_release_finished(void *_of, binresult *res){
   openfile *of=(openfile *)_of;
+  binresult *result;
   debug(D_NOTICE, "fs_release_finished %p, %p!", _of, res);
+  if (res){
+    result=find_res(res, "result");
+    if (result->num!=0)
+      debug(D_BUG, "file_close failed with error %u", (unsigned int)result->num);
+  }
   if (of->file)
     dec_refcnt(of->file);
   if (of->refcnt){
