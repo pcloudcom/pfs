@@ -1014,7 +1014,7 @@ static void send_notification(node * item, LONG event1, LONG event2){
   win_name[0] = (wchar_t)mount_point;
   win_name[1] = L':';
   build_full_path(&path, item);
-  utf8_to_wchar_buf(path, win_name+2, MAX_PATH-2);
+  utf8_to_wchar_buf(full_path, win_name+2, MAX_PATH-2);
   SHChangeNotify(event1, SHCNF_PATH|SHCNF_FLUSH, win_name, NULL);
   if (event2) SHChangeNotify(event2, SHCNF_PATH|SHCNF_FLUSH, win_name, NULL);
 }
@@ -1028,7 +1028,7 @@ static void notify_modify_item(node * item){
 }
 
 static void notify_delete_item(node * item){
-  send_notification(item, SHCNE_DELETE, 0);
+  send_notification(item, item->isfolder?SHCNE_RMDIR:SHCNE_DELETE, 0);
 }
 
 #endif
