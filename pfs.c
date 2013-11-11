@@ -1941,7 +1941,7 @@ static int schedule_readahead(openfile *of, off_t offset, size_t length, size_t 
   time_t tm;
   int unsigned numpages, lockpages, needpages, i;
   char dontneed[length/cachehead->pagesize+8];
-  debug(D_NOTICE, "offset %lu, len %u", offset, (uint32_t)length);
+  debug(D_NOTICE, "offset %"PRIi64", len %u", offset, (uint32_t)length);
   if (offset>of->file->tfile.size || !length){
     debug(D_WARNING, "invalid offset");
     return 0;
@@ -2352,7 +2352,7 @@ static int fs_read(const char *path, char *buf, size_t size, off_t offset,
 
   check_for_reopen(of);
 
-  debug(D_NOTICE, "fs_read %s, off: %lu, size: %u", path, offset, (uint32_t)size);
+  debug(D_NOTICE, "fs_read %s, off: %"PRIi64", size: %u", path, offset, (uint32_t)size);
 
   readahead=0;
   frompageoff=offset/cachehead->pagesize;
@@ -2613,7 +2613,7 @@ static int fs_write(const char *path, const char *buf, size_t size, off_t offset
   uint32_t frompageoff, topageoff;
   int triedwake;
   of=(openfile *)((uintptr_t)fi->fh);
-  debug(D_NOTICE, "fs_write %s", path);
+  debug(D_NOTICE, "fs_write %s %"PRIu64" size %d", path, offset, (int)size);
 
   if (of->issetting)
     return fs_write_setting(of, buf, size, offset);
@@ -2628,6 +2628,7 @@ static int fs_write(const char *path, const char *buf, size_t size, off_t offset
       if (pthread_cond_wait_timeout(&unackcond, &unacklock)){
         unackedsleepers--;
         pthread_mutex_unlock(&unacklock);
+        debug(D_WARNING, "fs_write - not connected %s", path);
         return NOT_CONNECTED_ERR;
       }
     }
@@ -2651,6 +2652,7 @@ static int fs_write(const char *path, const char *buf, size_t size, off_t offset
   pthread_mutex_lock(&of->mutex);
   if (of->error){
     pthread_mutex_unlock(&of->mutex);
+    debug(D_WARNING, "fs_write - %s error %d", path, of->error);
     return of->error;
   }
   of->unackdata+=size;
@@ -2730,7 +2732,7 @@ static int fs_ftruncate(const char *path, off_t size, struct fuse_file_info *fi)
 
   wait_for_allowed_calls();
 
-  debug(D_NOTICE, "fs_ftruncate %s -> %lu", path, size);
+  debug(D_NOTICE, "fs_ftruncate %s -> %"PRIi64"", path, size);
 
   pthread_mutex_lock(&of->mutex);
   if (of->error){

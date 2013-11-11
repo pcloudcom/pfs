@@ -45,7 +45,7 @@ int impl_fuse_context::cast_from_longlong(LONGLONG src, FUSE_OFF_T *res)
 		return -E2BIG;
 #endif
 	*res=0;
-	*res=(long)src;
+	*res=(FUSE_OFF_T)src;
 	return 0;
 }
 

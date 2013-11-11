@@ -57,7 +57,7 @@ static int writeallfd(int sock, const void *ptr, size_t len){
   while (len){
     res=send(sock, ptr, len, 0);
     if (res==-1){
-      debug(D_WARNING, "send failed: %s", strerror(errno));
+      debug(D_WARNING, "send failed: %s, %d", strerror(errno), errno);
       if (errno==EINTR || errno==EAGAIN){
         debug(D_NOTICE, " --- try again...");
         continue;
@@ -609,7 +609,7 @@ static int connect_socket(const char *host, const char *port){
   hints.ai_socktype=SOCK_STREAM;
   rc=getaddrinfo(host, port, &hints, &res);
 #if defined(MINGW) || defined(_WIN32)
-    if (rc != 0){
+    if (rc != 0 || !res){
         if (rc == WSANOTINITIALISED){
             WSADATA wsaData;
             rc = WSAStartup(MAKEWORD(2, 2), &wsaData);
@@ -621,10 +621,9 @@ static int connect_socket(const char *host, const char *port){
           return -1;
         }
     }
-#else
-  if (rc!=0)
-    return -1;
 #endif // defined
+  if (rc!=0 || !res)
+    return -1;
   sock=connect_res(res);
   freeaddrinfo(res);
   if (sock!=-1){

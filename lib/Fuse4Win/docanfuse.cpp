@@ -87,8 +87,14 @@ static int DOKAN_CALLBACK FuseCreateFile(
 										(AccessMode & GENERIC_READ) != 0 ? 'r' :' ',
 										(AccessMode & GENERIC_WRITE) != 0 ? 'w' :' ', AccessMode);
 
-	return -errno_to_win32_error(impl->create_file(FileName,AccessMode,ShareMode,
-		CreationDisposition,FlagsAndAttributes,DokanFileInfo));
+	int err = impl->create_file(FileName,AccessMode,ShareMode,
+		CreationDisposition,FlagsAndAttributes,DokanFileInfo);
+	if (impl->debug() && err && err != 2 && err != -2)
+	{
+		FWPRINTF(stderr, L"********************** CreateFile : %d  - %d\n", err, errno_to_win32_error(err));
+	}
+
+	return -errno_to_win32_error(err);
 }
 
 static int DOKAN_CALLBACK FuseCloseFile(
@@ -111,9 +117,14 @@ static int DOKAN_CALLBACK FuseReadFile(
 {
 	impl_fuse_context *impl=the_impl;
 	if (impl->debug()) FWPRINTF(stderr, L"ReadFile : %s\n", FileName);
+	int err = impl->read_file(FileName,Buffer,
+		BufferLength,ReadLength,Offset,DokanFileInfo);
+	if (impl->debug() && err)
+	{
+		FWPRINTF(stderr, L"********************** ReadFile : %d  - %d\n", err, errno_to_win32_error(err));
+	}
 
-	return -errno_to_win32_error(impl->read_file(FileName,Buffer,
-		BufferLength,ReadLength,Offset,DokanFileInfo));
+	return -errno_to_win32_error(err);
 }
 
 static int DOKAN_CALLBACK FuseWriteFile(
@@ -125,11 +136,24 @@ static int DOKAN_CALLBACK FuseWriteFile(
 				PDOKAN_FILE_INFO	DokanFileInfo)
 {
 	impl_fuse_context *impl=the_impl;
+	int err = 0;
 	if (impl->debug()) FWPRINTF(stderr, L"WriteFile : %s, offset %I64d, length %d\n",
 		FileName, Offset, NumberOfBytesToWrite);
 
-	return -errno_to_win32_error(impl->write_file(FileName,Buffer,
-		NumberOfBytesToWrite,NumberOfBytesWritten,Offset,DokanFileInfo));
+	DWORD written = 1;
+	*NumberOfBytesWritten = 0;
+	do
+	{
+		err = impl->write_file(FileName, ((LPBYTE)Buffer) + *NumberOfBytesWritten,
+			NumberOfBytesToWrite - *NumberOfBytesWritten, &written, Offset+*NumberOfBytesWritten, DokanFileInfo);
+		if (impl->debug() && err)
+		{
+			FWPRINTF(stderr, L"********************** WriteFile : %d  - %d\n", err, errno_to_win32_error(err));
+		}
+		*NumberOfBytesWritten += written;
+	}while (written && !err && *NumberOfBytesWritten < NumberOfBytesToWrite);
+
+	return -errno_to_win32_error(err);
 }
 
 static int DOKAN_CALLBACK FuseFlushFileBuffers(
@@ -207,9 +231,14 @@ static int DOKAN_CALLBACK FuseSetEndOfFile(
 				PDOKAN_FILE_INFO	DokanFileInfo)
 {
 	impl_fuse_context *impl=the_impl;
+	int err;
 	if (impl->debug()) FWPRINTF(stderr, L"SetEndOfFile %s, %I64d\n", FileName, ByteOffset);
-
-	return -errno_to_win32_error(impl->set_end_of_file(FileName, ByteOffset,DokanFileInfo));
+	err = impl->set_end_of_file(FileName, ByteOffset,DokanFileInfo);
+	if (impl->debug() && err)
+	{
+		FWPRINTF(stderr, L"********************** FuseSetEndOfFile : %d  - %d\n", err, errno_to_win32_error(err));
+	}
+	return -errno_to_win32_error(err);
 }
 
 static int DOKAN_CALLBACK FuseSetFileAttributes(
@@ -243,9 +272,13 @@ static int DOKAN_CALLBACK FuseGetDiskFreeSpace(PULONGLONG FreeBytesAvailable,
 {
 	impl_fuse_context *impl=the_impl;
 	if (impl->debug()) FWPRINTF(stderr, L"GetDiskFreeSpace\n");
-
-	return -errno_to_win32_error(impl->get_disk_free_space(FreeBytesAvailable,TotalNumberOfBytes,
-		TotalNumberOfFreeBytes, DokanFileInfo));
+    int err = impl->get_disk_free_space(FreeBytesAvailable,TotalNumberOfBytes,
+		TotalNumberOfFreeBytes, DokanFileInfo);
+	if (impl->debug() && err)
+	{
+		FWPRINTF(stderr, L"********************** FuseGetDiskFreeSpace : %d  - %d\n", err, errno_to_win32_error(err));
+	}
+	return -errno_to_win32_error(err);
 }
 
 static int DOKAN_CALLBACK FuseGetVolumeInformation(

@@ -10,7 +10,7 @@
 #define _FUSE_H_
 
 /* Include Windows compatibility stuff early*/
-#ifdef WIN32
+#if defined(MINGW) || defined(_WIN32)
 #include "fuse_win.h"
 #else
 #define FUSE_OFF_T off_t

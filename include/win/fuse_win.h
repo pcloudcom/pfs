@@ -66,6 +66,8 @@ struct timespec
 #if defined(__MINGW32__)
 /** Use 64 bit offsets */
 #define __USE_FILE_OFFSET64
+#define WIDE_OFF_T
+#define off_t long long
 //Block sizes
 typedef unsigned __int64 fsfilcnt64_t;
 typedef unsigned __int64 fsblkcnt64_t;
@@ -131,8 +133,8 @@ struct statvfs
 #define FUSE_STAT stat
 
 #else
-#define FUSE_OFF_T int64_t
-#define FUSE_STAT stat64
+#define FUSE_OFF_T long long
+#define FUSE_STAT stat
 struct stat64 {
 	dev_t st_dev;
 	ino_t st_ino;
@@ -141,7 +143,7 @@ struct stat64 {
 	short st_uid;
 	short st_gid;
 	dev_t st_rdev;
-	fuse_off_t st_size;
+	FUSE_OFF_T st_size;
 	time_t st_atime;
 	time_t st_mtime;
 	time_t st_ctime;
