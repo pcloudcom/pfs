@@ -89,6 +89,7 @@
 		</Build>
 		<Compiler>
 			<Add option="-Wall" />
+			<Add option="-DUNICODE" />
 			<Add directory="../include" />
 			<Add directory="../lib/Fuse4Win" />
 			<Add directory="../include/win" />

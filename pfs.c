@@ -50,6 +50,7 @@ int dumb_socketpair(SOCKET socks[2], int make_overlapped);
 #   define ST_NOSUID        2
 #endif
 
+char mount_point;
 #else
 
 #define milisleep(x) usleep((x)*1000)
@@ -973,6 +974,65 @@ static node *get_folder_by_id(uint64_t folderid){
   return NULL;
 }
 
+#if defined(MINGW) || defined(_WIN32)
+#include <Shlobj.h>
+
+static void fix_path(wchar_t *res){
+  while (*res){
+    if (*res == L'/')
+      *res = L'\\';
+      ++res;
+  }
+}
+
+static void utf8_to_wchar_buf(const char *src, wchar_t *res, int maxlen){
+  if (src==NULL || res==NULL || maxlen==0) return;
+
+  int ln=MultiByteToWideChar(CP_UTF8,0,src,-1,NULL,0);
+  if (ln>=maxlen){
+    *res=L'\0';
+    return;
+  }
+  MultiByteToWideChar(CP_UTF8,0,src,-1,res,(int)(strlen(src)+1));
+  fix_path(res);
+}
+
+static void build_full_path(char** full_path, node *f){
+  if (f->parent){
+    build_full_path(full_path, f->parent);
+    (*full_path)[0] = '/';
+    strcpy(*full_path+1, f->name);
+    (*full_path) += strlen(f->name)+1;
+  }
+}
+
+static void send_notification(node * item, LONG event1, LONG event2){
+  wchar_t win_name[MAX_PATH];
+  char full_path[4*MAX_PATH] = "";
+  char * path = full_path;
+
+  win_name[0] = (wchar_t)mount_point;
+  win_name[1] = L':';
+  build_full_path(&path, item);
+  utf8_to_wchar_buf(path, win_name+2, MAX_PATH-2);
+  SHChangeNotify(event1, SHCNF_PATH|SHCNF_FLUSH, win_name, NULL);
+  if (event2) SHChangeNotify(event2, SHCNF_PATH|SHCNF_FLUSH, win_name, NULL);
+}
+
+static void notify_create_item(node * item){
+  send_notification(item, SHCNE_CREATE, 0);
+}
+
+static void notify_modify_item(node * item){
+  send_notification(item, item->isfolder?SHCNE_UPDATEDIR:SHCNE_UPDATEITEM, SHCNE_ATTRIBUTES);
+}
+
+static void notify_delete_item(node * item){
+  send_notification(item, SHCNE_DELETE, 0);
+}
+
+#endif
+
 static void diff_create_folder(binresult *meta, time_t mtime){
   binresult *name;
   node *folder, *f;
@@ -1009,6 +1069,11 @@ static void diff_create_folder(binresult *meta, time_t mtime){
   f->modifytime=mtime;
   folder->parent=f;
   list_add(folders[folder->tfolder.folderid%HASH_SIZE], folder);
+
+#if defined(MINGW) || defined(_WIN32)
+  notify_create_item(folder);
+#endif
+
   if (treesleep)
     pthread_cond_broadcast(&treecond);
   pthread_mutex_unlock(&treelock);
@@ -1051,6 +1116,9 @@ static void delete_file(node *file, int removefromparent){
     file->parent=NULL;
   }
   else {
+#if defined(MINGW) || defined(_WIN32)
+  notify_delete_item(file);
+#endif
     free_file_cache(file);
     free(file->name);
     free(file);
@@ -1108,6 +1176,11 @@ static void diff_create_file(binresult *meta, time_t mtime){
   f->modifytime=mtime;
   file->parent=f;
   list_add(files[file->tfile.fileid%HASH_SIZE], file);
+
+#if defined(MINGW) || defined(_WIN32)
+  notify_create_item(file);
+#endif
+
   if (treesleep)
     pthread_cond_broadcast(&treecond);
   pthread_mutex_unlock(&treelock);
@@ -1165,11 +1238,19 @@ static void diff_modifyfile_file(binresult *meta, time_t mtime){
         par->tfolder.nodes[par->tfolder.nodecnt++]=f;
         par->modifytime=mtime;
 
+#if defined(MINGW) || defined(_WIN32)
+        notify_modify_item(f->parent);
+#endif
         remove_from_parent(f);
         f->parent=par;
      }
     }
+
+#if defined(MINGW) || defined(_WIN32)
+    notify_modify_item(f->parent);
+#endif
   }
+
   if (treesleep)
     pthread_cond_broadcast(&treecond);
   pthread_mutex_unlock(&treelock);
@@ -1217,10 +1298,17 @@ static void diff_modifyfile_folder(binresult* meta, time_t mtime){
         par->modifytime=mtime;
 
         remove_from_parent(f);
+#if defined(MINGW) || defined(_WIN32)
+        notify_modify_item(f->parent);
+#endif
         f->parent=par;
       }
     }
+#if defined(MINGW) || defined(_WIN32)
+    notify_modify_item(f->parent);
+#endif
   }
+
   if (treesleep)
     pthread_cond_broadcast(&treecond);
   pthread_mutex_unlock(&treelock);
@@ -1237,6 +1325,11 @@ static void delete_folder(node *folder, int removefromparent){
   free(folder->tfolder.nodes);
   if (removefromparent)
     remove_from_parent(folder);
+
+#if defined(MINGW) || defined(_WIN32)
+  notify_delete_item(folder);
+#endif
+
   list_del(folder);
   free(folder->name);
   free(folder);
@@ -3382,6 +3475,8 @@ int pfs_main(int argc, char **argv, const pfs_params* params){
 #if !defined(MINGW) && !defined(_WIN32)
   myuid=getuid();
   mygid=getgid();
+#else
+mount_point = argv[1][0];
 #endif
   r = fuse_main(argc, argv, &fs_oper, NULL);
   return r;
