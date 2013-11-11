@@ -210,6 +210,7 @@ static ssize_t readallssl_timeout(SSL *ssl, int sock, void *ptr, size_t len, lon
 {
   unsigned long mode=1;
   ioctlsocket(sock, FIONBIO, &mode);
+  (void)flags;
 }
 #endif
 
