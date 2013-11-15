@@ -975,27 +975,6 @@ static node *get_folder_by_id(uint64_t folderid){
 }
 
 #if defined(MINGW) || defined(_WIN32)
-#include <Shlobj.h>
-
-static void fix_path(wchar_t *res){
-  while (*res){
-    if (*res == L'/')
-      *res = L'\\';
-      ++res;
-  }
-}
-
-static void utf8_to_wchar_buf(const char *src, wchar_t *res, int maxlen){
-  if (src==NULL || res==NULL || maxlen==0) return;
-
-  int ln=MultiByteToWideChar(CP_UTF8,0,src,-1,NULL,0);
-  if (ln>=maxlen){
-    *res=L'\0';
-    return;
-  }
-  MultiByteToWideChar(CP_UTF8,0,src,-1,res,(int)(strlen(src)+1));
-  fix_path(res);
-}
 
 static void build_full_path(char** full_path, node *f){
   if (f->parent){
@@ -1006,17 +985,70 @@ static void build_full_path(char** full_path, node *f){
   }
 }
 
-static void send_notification(node * item, LONG event1, LONG event2){
-  wchar_t win_name[MAX_PATH];
-  char full_path[4*MAX_PATH] = "";
-  char * path = full_path;
+#define  PIPE_NAME L"\\\\.\\pipe\\pfsnotifypipe"
 
-  win_name[0] = (wchar_t)mount_point;
-  win_name[1] = L':';
+#define SHCNE_CREATE (0x00000002)
+#define SHCNE_DELETE (0x00000004)
+#define SHCNE_MKDIR (0x00000008)
+#define SHCNE_RMDIR (0x00000010)
+#define SHCNE_ATTRIBUTES (0x00000800)
+#define SHCNE_UPDATEDIR (0x00001000)
+#define SHCNE_UPDATEITEM (0x00002000)
+
+
+typedef struct
+{
+    uint32_t size;
+    uint32_t event1;
+    uint32_t event2;
+    char message[4*MAX_PATH];
+} notification;
+
+static void send_notification_pipe(const notification* notify){
+  DWORD  mode, written, total;
+  const wchar_t* pipename = PIPE_NAME;
+  static HANDLE hPipe = INVALID_HANDLE_VALUE;
+
+  if (hPipe == INVALID_HANDLE_VALUE)
+    hPipe = CreateFile(pipename, GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
+
+  while (1){
+    if (hPipe != INVALID_HANDLE_VALUE) break;
+    if (GetLastError() != ERROR_PIPE_BUSY){
+      debug(D_WARNING, "failed to open notification pipe %lu", GetLastError());
+      return;
+    }
+    if (!WaitNamedPipe(PIPE_NAME, 500)){
+      debug(D_WARNING, "Failed to open pipe - timed out.");
+      return;
+    }
+  }
+  mode = PIPE_READMODE_BYTE;
+  if (SetNamedPipeHandleState(hPipe, &mode,  NULL, NULL)){
+    total = 0;
+    while (total < notify->size){
+      if (!WriteFile(hPipe, (void*)((char*)notify+total), notify->size-total, &written, NULL)){
+        debug(D_WARNING, "Failed to write data to the pipe. %lu", GetLastError());
+        break;
+      }
+      total += written;
+    }
+    FlushFileBuffers(hPipe);
+  }
+}
+
+static void send_notification(node * item, LONG event1, LONG event2){
+  notification n;
+  char * path = n.message;
+  n.event1 = event1;
+  n.event2 = event2;
+  n.message[0] = 0;
+
   build_full_path(&path, item);
-  utf8_to_wchar_buf(full_path, win_name+2, MAX_PATH-2);
-  SHChangeNotify(event1, SHCNF_PATH|SHCNF_FLUSH, win_name, NULL);
-  if (event2) SHChangeNotify(event2, SHCNF_PATH|SHCNF_FLUSH, win_name, NULL);
+  debug(D_NOTICE, n.message);
+  n.size = strlen(n.message)+1+3*sizeof(uint32_t);
+
+  send_notification_pipe(&n);
 }
 
 static void notify_create_item(node * item){

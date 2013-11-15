@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include <windows.h>
 #include <Dbt.h>
-#include <ShlObj.h>
 
 #include "pfs.h"
 
