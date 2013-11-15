@@ -1062,7 +1062,6 @@ static void notify_modify_item(node * item){
 static void notify_delete_item(node * item){
   send_notification(item, item->isfolder?SHCNE_RMDIR:SHCNE_DELETE, 0);
 }
-
 #endif
 
 static void diff_create_folder(binresult *meta, time_t mtime){
