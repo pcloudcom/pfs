@@ -43,11 +43,11 @@ Description=pCloud mount
 
 [Service]
 Type=oneshot
-User=ubuntu
-Group=ubuntu
+User=<your user>
+Group=<your user>
 RemainAfterExit=yes
-ExecStart=/usr/bin/mount.pfs --auth <you auth token here> /run/media/ubuntu/pCloud
-ExecStop=/usr/bin/umount /run/media/ubuntu/pCloud
+ExecStart=/usr/bin/mount.pfs --auth <you auth token here> /run/media/<your user>/pCloud
+ExecStop=/usr/bin/umount /run/media/<your user>/pCloud
 
 [Install]
 WantedBy=multi-user.target
