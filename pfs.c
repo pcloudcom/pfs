@@ -1029,6 +1029,8 @@ static void send_notification_pipe(const notification* notify){
     while (total < notify->size){
       if (!WriteFile(hPipe, (void*)((char*)notify+total), notify->size-total, &written, NULL)){
         debug(D_WARNING, "Failed to write data to the pipe. %lu", GetLastError());
+        CloseHandle(hPipe);
+        hPipe = INVALID_HANDLE_VALUE;
         break;
       }
       total += written;
