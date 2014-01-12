@@ -1,5 +1,7 @@
 #include <stdio.h>
 #include <windows.h>
+#include <aclapi.h>
+#include <stdint.h>
 #include <Dbt.h>
 
 #include "pfs.h"
@@ -25,12 +27,34 @@ extern "C" int pfs_main(int argc, char **argv, const pfs_params* params);
 #ifndef EACCES
 #define EACCES 13
 #endif
+
 DWORD                   dwErr = 0;
 BOOL                    bStop = FALSE;
 SERVICE_STATUS_HANDLE   sshStatusHandle;
 SERVICE_STATUS          ssStatus;
+HANDLE                  hPipe = INVALID_HANDLE_VALUE;
+HANDLE                  hMountThread = INVALID_HANDLE_VALUE;
+
+#define OPT_MASK_COMMAND    0x00FF0000
+#define OPT_MASK_OPTS       0x0000FF00
+#define OPT_MASK_LETTER     0x000000FF
+
+#define OPT_COMMAND_MOUNT   0x00010000
+#define OPT_COMMAND_UMOUNT  0x00000000
+
+#define getMountLetter(P) (((P)&OPT_MASK_LETTER) + 'A')
+#define  PIPE_NAME L"\\\\.\\pipe\\pfsservicepipe"
+
+typedef struct
+{
+    uint32_t options; // mount / umount, ssl, mount letter
+    uint32_t cache;
+    char auth[120];
+}mount_params;
+
 
 typedef BOOL (__stdcall *DokanUnmountType)(WCHAR DriveLetter);
+
 
 #include <time.h>
 void do_debug(const char *file, const char *function, int unsigned line, int unsigned level, const char *fmt, ...){
@@ -64,7 +88,8 @@ void do_debug(const char *file, const char *function, int unsigned line, int uns
   fflush(log);
 }
 
-BOOL ReportStatusToSCMgr(DWORD dwCurrentState, DWORD dwWin32ExitCode, DWORD dwWaitHint)
+
+static BOOL ReportStatusToSCMgr(DWORD dwCurrentState, DWORD dwWin32ExitCode, DWORD dwWaitHint)
 {
     static DWORD dwCheckPoint = 1;
     BOOL fResult = TRUE;
@@ -97,6 +122,7 @@ static char getFirstFreeDevice()
     return 0;
 }
 
+
 static bool isFreeDevice(char letter)
 {
     DWORD devices = GetLogicalDrives();
@@ -106,6 +132,7 @@ static bool isFreeDevice(char letter)
         return (devices & (1<<(letter-'A'))) == 0;
     return false;
 }
+
 
 static void storeKey(LPCSTR key, const char * val)
 {
@@ -140,23 +167,8 @@ static void getDataFromRegistry(const char* key, char data[MAX_PATH])
     }
 }
 
-int getIntFromRegistry(const char* key)
-{
-    HRESULT hr;
-    DWORD val = 0;
-    DWORD cbDataSize = sizeof(val);
-    HKEY hKey;
-    hr = RegOpenKeyExA(HKEY_LOCAL_MACHINE, REGISTRY_KEY_PCLOUD, 0, KEY_READ, &hKey);
-    if (!hr)
-    {
-        hr = RegQueryValueExA(hKey, key, NULL, NULL, (LPBYTE)&val, &cbDataSize);
-        RegCloseKey(hKey);
-        return val;
-    }
-    return 0;
-}
 
-void setVolumeIcon(char letter, bool create)
+static void setVolumeIcon(char letter, bool create)
 {
     HRESULT hr;
     WCHAR data[MAX_PATH];
@@ -191,41 +203,40 @@ void setVolumeIcon(char letter, bool create)
     }
 }
 
+
 char mountPoint[3] = "a:";
 
 DWORD WINAPI ThreadProc(LPVOID lpParam)
 {
+    mount_params* mp = (mount_params*)lpParam;
     pfs_params params = {0,};
-    char username[MAX_PATH]="";
-    char password[MAX_PATH]="";
     char auth[MAX_PATH]="";
-    char buff[MAX_PATH] = "";
     size_t cachesize;
     char* argv[2] = {(char *)"pfs", mountPoint};
 
-    getDataFromRegistry(KEY_PATH, buff);
-    if (buff[0] && isFreeDevice(buff[0]))
-        mountPoint[0] = buff[0];
+    if (mp && isFreeDevice(getMountLetter(mp->options)))
+    {
+        mountPoint[0] = getMountLetter(mp->options);
+    }
     else
     {
         mountPoint[0] = getFirstFreeDevice();
-        storeKey(KEY_PATH, buff);
     }
 
-    getDataFromRegistry(KEY_AUTH, auth);
-    storeKey(KEY_AUTH, "");
-    debug(D_NOTICE, "auth:%s", auth);
-    getDataFromRegistry(KEY_CACHE_SIZE, buff);
-    cachesize = (size_t)atol(buff);
-    debug(D_NOTICE, "cache size:%u", cachesize);
+    memcpy(auth, mp->auth, sizeof(mp->auth));
+    debug(D_ERROR, "auth:%s", auth);
+
+    cachesize = mp->cache;
+    debug(D_ERROR, "cache size:%u", cachesize);
 
     // Stored data is in MB - convert to bytes
     if (cachesize > 0 && cachesize < 3000)
+    {
         cachesize *= 1024*1024;
-    getDataFromRegistry(KEY_USE_SSL, buff);
-    debug(D_NOTICE, "use SSL :%s", buff);
-    if (!strcmp(buff, "ssl") || !strcmp(buff, "SSL"))
-        params.use_ssl = 1;
+    }
+
+    params.use_ssl = (mp->options & OPT_MASK_OPTS) != 0;
+    debug(D_ERROR, "use SSL :%d", params.use_ssl);
 
     if (auth[0])
     {
@@ -235,72 +246,214 @@ DWORD WINAPI ThreadProc(LPVOID lpParam)
     else
     {
         params.auth = NULL;
-        params.pass = password;
     }
 
-    params.username = username;
-    params.use_ssl = 0;
+    params.username = NULL;
     params.cache_size = cachesize?cachesize:512*1024*1024;
+
     setVolumeIcon(mountPoint[0], true);
     int res = pfs_main(2, argv, &params);
     setVolumeIcon(mountPoint[0], false);
     if (res == ENOTCONN)
     {
-        debug(D_NOTICE, "Send NotConnected msg");
+        debug(D_ERROR, "Send NotConnected msg");
     }
     else if (res == EACCES)
     {
-        debug(D_NOTICE, "Send Access denied msg");
+        debug(D_ERROR, "Send Access denied msg");
     }
     return res;
 }
 
+VOID mount(mount_params* pparams)
+{
+    if (hMountThread != INVALID_HANDLE_VALUE)
+    {
+        debug(D_ERROR, "Already mounted!");
+        return;
+    }
+
+    hMountThread = CreateThread(NULL, 0, ThreadProc, pparams, 0, NULL);
+    if (!hMountThread || hMountThread == INVALID_HANDLE_VALUE)
+    {
+        debug(D_ERROR, "Failed to create thread!");
+        hMountThread = INVALID_HANDLE_VALUE;
+        return;
+    }
+
+    debug(D_ERROR, "Thread created");
+    int loop = 3;
+    while (loop > 0)
+    {
+        DWORD recipients = BSM_ALLDESKTOPS | BSM_APPLICATIONS;
+        BroadcastSystemMessage(0, &recipients, WM_DEVICECHANGE, DBT_CONFIGCHANGED, 0);
+        --loop;
+    }
+}
+
+VOID unmount()
+{
+    DokanUnmountType Unmount = NULL;
+    HMODULE dokanDll = LoadLibraryW(DOKAN_DLL);
+    if (dokanDll) Unmount=(DokanUnmountType)GetProcAddress(dokanDll, "DokanUnmount");
+
+    if (mountPoint[0] != 'a' && Unmount)
+    {
+        debug(D_ERROR, "Unmounting %s ...", mountPoint);
+        setVolumeIcon(mountPoint[0], false);
+        Unmount((WCHAR)mountPoint[0]);
+    }
+    if (dokanDll) FreeLibrary(dokanDll);
+
+    if (hMountThread && hMountThread != INVALID_HANDLE_VALUE)
+    {
+        WaitForSingleObject(hMountThread, 2000);
+        debug(D_ERROR, "Closing thread");
+        TerminateThread(hMountThread, 0);
+        CloseHandle(hMountThread);
+        hMountThread = INVALID_HANDLE_VALUE;
+    }
+
+    DWORD recipients = BSM_ALLDESKTOPS | BSM_APPLICATIONS;
+    BroadcastSystemMessage(0, &recipients, WM_DEVICECHANGE, DBT_CONFIGCHANGED, 0);
+
+    debug(D_ERROR, "Unmounted!");
+}
+
+VOID disconnect_pipe()
+{
+    if (hPipe != INVALID_HANDLE_VALUE)
+    {
+        FlushFileBuffers(hPipe);
+        DisconnectNamedPipe(hPipe);
+        hPipe = INVALID_HANDLE_VALUE;
+    }
+}
 
 VOID WINAPI ServiceStart(const wchar_t * config_file)
 {
-    HANDLE hThread = CreateThread(NULL, 0, ThreadProc, NULL, 0, NULL);
-    debug(D_NOTICE, "Thread created");
-    unsigned int loop = 0;
+    PSID pEveryoneSID = NULL;
+    PACL pACL = NULL;
+    PSECURITY_DESCRIPTOR pSD = NULL;
+    EXPLICIT_ACCESS ea[1];
+    SID_IDENTIFIER_AUTHORITY SIDAuthWorld = {SECURITY_WORLD_SID_AUTHORITY};
+    SECURITY_ATTRIBUTES sa;
+
+    if(!AllocateAndInitializeSid(&SIDAuthWorld, 1, SECURITY_WORLD_RID, 0, 0, 0, 0, 0, 0, 0, &pEveryoneSID))
+    {
+        goto cleanup;
+    }
+
+    ZeroMemory(&ea, sizeof(EXPLICIT_ACCESS));
+    ea[0].grfAccessPermissions = SPECIFIC_RIGHTS_ALL | STANDARD_RIGHTS_ALL;
+    ea[0].grfAccessMode = SET_ACCESS;
+    ea[0].grfInheritance= NO_INHERITANCE;
+    ea[0].Trustee.TrusteeForm = TRUSTEE_IS_SID;
+    ea[0].Trustee.TrusteeType = TRUSTEE_IS_WELL_KNOWN_GROUP;
+    ea[0].Trustee.ptstrName  = (LPTSTR) pEveryoneSID;
+
+    if (SetEntriesInAcl(1, ea, NULL, &pACL))
+    {
+        goto cleanup;
+    }
+
+    pSD = (PSECURITY_DESCRIPTOR) malloc(SECURITY_DESCRIPTOR_MIN_LENGTH);
+    if(!InitializeSecurityDescriptor(pSD, SECURITY_DESCRIPTOR_REVISION))
+    {
+        goto cleanup;
+    }
+    if (!SetSecurityDescriptorDacl(pSD, TRUE, pACL, FALSE))
+    {
+        goto cleanup;
+    }
+    sa.nLength = sizeof (SECURITY_ATTRIBUTES);
+    sa.lpSecurityDescriptor = pSD;
+    sa.bInheritHandle = FALSE;
+
+    hPipe = CreateNamedPipe(PIPE_NAME, PIPE_ACCESS_INBOUND,
+                            PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT,
+                            1, 0, sizeof(mount_params), 0, &sa);
+    mount_params params;
     ReportStatusToSCMgr(SERVICE_RUNNING, NO_ERROR, 0);
     while (!bStop)
     {
-        Sleep(2000);
-        if (loop < 2)
+        DWORD read = 0, total;
+        if (hPipe != INVALID_HANDLE_VALUE)
         {
-            DWORD recipients = BSM_ALLDESKTOPS | BSM_APPLICATIONS;
-            BroadcastSystemMessage(0, &recipients, WM_DEVICECHANGE, DBT_CONFIGCHANGED, 0);
-            ++loop;
+            debug(D_ERROR, "Service main - Connecting pipe...");
+            if (!ConnectNamedPipe(hPipe, NULL))
+            {
+                Sleep(500);
+                debug(D_ERROR, "Service main - failed to connect pipe %lu ...", GetLastError());
+                continue;
+            }
+            debug(D_ERROR, "Service main - Connected pipe...");
         }
+        else
+        {
+            debug(D_ERROR, "Service main - Braking because of broken pipe.");
+            break;
+        }
+
+        debug(D_ERROR, "Service main - received command");
+
+        if (ReadFile(hPipe, &params, sizeof(mount_params), &read, NULL))
+        {
+            total = read;
+            while (read && total < sizeof(mount_params))
+            {
+                if (!ReadFile(hPipe, ((char*)&params+total), sizeof(mount_params)-total, &read, NULL))
+                {
+                    read = 0;
+                    debug(D_ERROR, "Service main - error inner read data from pipe");
+                }
+                total += read;
+            }
+
+            if (total == sizeof(mount_params))
+            {
+                if ((params.options & OPT_MASK_COMMAND) == OPT_COMMAND_MOUNT)
+                {
+                    debug(D_ERROR, "Service main - mounting");
+                    mount(&params);
+                }
+                else
+                {
+                    debug(D_ERROR, "Service main - unmounting");
+                    unmount();
+                }
+            }
+        }
+        else
+        {
+            debug(D_ERROR, "Service main - error read data from pipe");
+        }
+        DisconnectNamedPipe(hPipe);
     }
+
+cleanup:
+    if (pEveryoneSID) FreeSid(pEveryoneSID);
+    if (pACL) free(pACL);
+    if (pSD) free(pSD);
+
     ReportStatusToSCMgr(SERVICE_STOP_PENDING, NO_ERROR, 0);
 
-    debug(D_NOTICE, "Service main - waiting");
-    WaitForSingleObject(hThread, 5000);
-
-    debug(D_NOTICE, "Service main - closing");
-    CloseHandle(hThread);
+    disconnect_pipe();
+    unmount();
 
     ReportStatusToSCMgr(SERVICE_STOPPED, NO_ERROR, 0);
 
-    debug(D_NOTICE, "Service main - exit");
+    debug(D_ERROR, "Service main - exit");
 }
 
 
 VOID WINAPI ServiceStop()
 {
     debug(D_NOTICE, "ServiceStop");
-    DokanUnmountType Unmount = NULL;
-    HMODULE dokanDll = LoadLibraryW(DOKAN_DLL);
-    if (dokanDll) Unmount=(DokanUnmountType)GetProcAddress(dokanDll, "DokanUnmount");
-
     bStop=TRUE;
-    if (mountPoint[0] != 'a' && Unmount)
-    {
-        debug(D_NOTICE, "Unmounting...");
-        setVolumeIcon(mountPoint[0], false);
-        Unmount((WCHAR)mountPoint[0]);
-    }
-    if (dokanDll) FreeLibrary(dokanDll);
+    disconnect_pipe();
+    unmount();
+    ReportStatusToSCMgr(SERVICE_STOPPED, NO_ERROR, 0);
 }
 
 
@@ -345,7 +498,7 @@ void CmdInstallService(BOOL Start)
         schService = CreateService(schSCManager, SZSERVICENAME, SZSERVICEDISPLAYNAME,
             SERVICE_ALL_ACCESS,
             SERVICE_WIN32_OWN_PROCESS  | SERVICE_INTERACTIVE_PROCESS,
-            SERVICE_DEMAND_START,
+            SERVICE_AUTO_START,
             SERVICE_ERROR_NORMAL,
             szPath, NULL, NULL, NULL, NULL, NULL);
 
@@ -357,6 +510,16 @@ void CmdInstallService(BOOL Start)
             printf("CreateService failed %lu!\n", GetLastError());
             return;
         }
+        SC_ACTION action;
+        SERVICE_FAILURE_ACTIONS sfa;
+        sfa.dwResetPeriod = INFINITE;
+        sfa.lpRebootMsg = NULL;
+        sfa.lpCommand = NULL;
+        sfa.cActions = 1;
+        sfa.lpsaActions = &action;
+        sfa.lpsaActions->Type = SC_ACTION_RESTART;
+        sfa.lpsaActions->Delay = 2000;
+        ChangeServiceConfig2(schService, SERVICE_CONFIG_FAILURE_ACTIONS, &sfa);
     } else
     {
         printf("OpenSCManager failed!\n");
