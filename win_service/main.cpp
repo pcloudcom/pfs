@@ -224,10 +224,10 @@ DWORD WINAPI ThreadProc(LPVOID lpParam)
     }
 
     memcpy(auth, mp->auth, sizeof(mp->auth));
-    debug(D_ERROR, "auth:%s", auth);
+    debug(D_NOTICE, "auth:%s", auth);
 
     cachesize = mp->cache;
-    debug(D_ERROR, "cache size:%u", cachesize);
+    debug(D_NOTICE, "cache size:%u", cachesize);
 
     // Stored data is in MB - convert to bytes
     if (cachesize > 0 && cachesize < 3000)
@@ -236,7 +236,7 @@ DWORD WINAPI ThreadProc(LPVOID lpParam)
     }
 
     params.use_ssl = (mp->options & OPT_MASK_OPTS) != 0;
-    debug(D_ERROR, "use SSL :%d", params.use_ssl);
+    debug(D_NOTICE, "use SSL :%d", params.use_ssl);
 
     if (auth[0])
     {
@@ -256,11 +256,11 @@ DWORD WINAPI ThreadProc(LPVOID lpParam)
     setVolumeIcon(mountPoint[0], false);
     if (res == ENOTCONN)
     {
-        debug(D_ERROR, "Send NotConnected msg");
+        debug(D_NOTICE, "Send NotConnected msg");
     }
     else if (res == EACCES)
     {
-        debug(D_ERROR, "Send Access denied msg");
+        debug(D_NOTICE, "Send Access denied msg");
     }
     return res;
 }
@@ -269,7 +269,7 @@ VOID mount(mount_params* pparams)
 {
     if (hMountThread != INVALID_HANDLE_VALUE)
     {
-        debug(D_ERROR, "Already mounted!");
+        debug(D_WARNING, "Already mounted!");
         return;
     }
 
@@ -281,7 +281,7 @@ VOID mount(mount_params* pparams)
         return;
     }
 
-    debug(D_ERROR, "Thread created");
+    debug(D_NOTICE, "Thread created");
     int loop = 3;
     while (loop > 0)
     {
@@ -299,7 +299,7 @@ VOID unmount()
 
     if (mountPoint[0] != 'a' && Unmount)
     {
-        debug(D_ERROR, "Unmounting %s ...", mountPoint);
+        debug(D_NOTICE, "Unmounting %s ...", mountPoint);
         setVolumeIcon(mountPoint[0], false);
         Unmount((WCHAR)mountPoint[0]);
     }
@@ -308,7 +308,7 @@ VOID unmount()
     if (hMountThread && hMountThread != INVALID_HANDLE_VALUE)
     {
         WaitForSingleObject(hMountThread, 2000);
-        debug(D_ERROR, "Closing thread");
+        debug(D_NOTICE, "Closing thread");
         TerminateThread(hMountThread, 0);
         CloseHandle(hMountThread);
         hMountThread = INVALID_HANDLE_VALUE;
@@ -317,7 +317,7 @@ VOID unmount()
     DWORD recipients = BSM_ALLDESKTOPS | BSM_APPLICATIONS;
     BroadcastSystemMessage(0, &recipients, WM_DEVICECHANGE, DBT_CONFIGCHANGED, 0);
 
-    debug(D_ERROR, "Unmounted!");
+    debug(D_NOTICE, "Unmounted!");
 }
 
 VOID disconnect_pipe()
@@ -380,14 +380,14 @@ VOID WINAPI ServiceStart(const wchar_t * config_file)
         DWORD read = 0, total;
         if (hPipe != INVALID_HANDLE_VALUE)
         {
-            debug(D_ERROR, "Service main - Connecting pipe...");
+            debug(D_NOTICE, "Service main - Connecting pipe...");
             if (!ConnectNamedPipe(hPipe, NULL))
             {
                 Sleep(500);
                 debug(D_ERROR, "Service main - failed to connect pipe %lu ...", GetLastError());
                 continue;
             }
-            debug(D_ERROR, "Service main - Connected pipe...");
+            debug(D_NOTICE, "Service main - Connected pipe...");
         }
         else
         {
@@ -395,7 +395,7 @@ VOID WINAPI ServiceStart(const wchar_t * config_file)
             break;
         }
 
-        debug(D_ERROR, "Service main - received command");
+        debug(D_NOTICE, "Service main - received command");
 
         if (ReadFile(hPipe, &params, sizeof(mount_params), &read, NULL))
         {
@@ -414,12 +414,12 @@ VOID WINAPI ServiceStart(const wchar_t * config_file)
             {
                 if ((params.options & OPT_MASK_COMMAND) == OPT_COMMAND_MOUNT)
                 {
-                    debug(D_ERROR, "Service main - mounting");
+                    debug(D_NOTICE, "Service main - mounting");
                     mount(&params);
                 }
                 else
                 {
-                    debug(D_ERROR, "Service main - unmounting");
+                    debug(D_NOTICE, "Service main - unmounting");
                     unmount();
                 }
             }
@@ -443,7 +443,7 @@ cleanup:
 
     ReportStatusToSCMgr(SERVICE_STOPPED, NO_ERROR, 0);
 
-    debug(D_ERROR, "Service main - exit");
+    debug(D_NOTICE, "Service main - exit");
 }
 
 
