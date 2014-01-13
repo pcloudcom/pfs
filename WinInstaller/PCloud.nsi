@@ -126,7 +126,8 @@ Section "Install"
     NoStartupXp:
   ${Else}
     MessageBox MB_YESNO|MB_ICONQUESTION "Do you want to run pCloud automatically when Windows starts?" IDNO NoStartup
-      nsExec::Exec '"$INSTDIR\CreateTask.bat" "$INSTDIR\pCloud.exe"'
+	  WriteRegStr "HKLM" "SOFTWARE\Microsoft\Windows\CurrentVersion\Run" "pCloud" "$INSTDIR\pCloud.exe"
+      ;nsExec::Exec '"$INSTDIR\CreateTask.bat" "$INSTDIR\pCloud.exe"'
     NoStartup:
     Delete start.xml
     Delete end.xml
