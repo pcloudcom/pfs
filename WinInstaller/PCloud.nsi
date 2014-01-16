@@ -51,8 +51,9 @@ Function .onInit
     ${ElseIf} ${IsWin2008}
     ${ElseIf} ${IsWin2008R2}
     ${ElseIf} ${IsWin7}
+	${ElseIf} ${IsWin8}
     ${Else}
-      MessageBox MB_OK "Your OS is not supported. pCloud supports Windows 2003, Vista, 2008, 2008R2 and 7 for x64."
+      MessageBox MB_OK "Your OS is not supported. pCloud supports Windows 2003, Vista, 2008, 2008R2, Win7 and 8 for x64."
       Abort
     ${EndIf}
   ${Else}
@@ -61,8 +62,9 @@ Function .onInit
     ${ElseIf} ${IsWinVista}
     ${ElseIf} ${IsWin2008}
     ${ElseIf} ${IsWin7}
+	${ElseIf} ${IsWin8}
     ${Else}
-      MessageBox MB_OK "Your OS is not supported. pCloud supports Windows XP, 2003, Vista, 2008 and 7 for x86."
+      MessageBox MB_OK "Your OS is not supported. pCloud supports Windows XP, 2003, Vista, 2008, Win7 and 8  for x86."
       Abort
     ${EndIf}
   ${EndIf}

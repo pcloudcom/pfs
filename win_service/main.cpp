@@ -4,6 +4,8 @@
 #include <stdint.h>
 #include <Dbt.h>
 
+#define DEBUG_LEVEL D_NOTICE
+
 #include "pfs.h"
 
 extern "C" int pfs_main(int argc, char **argv, const pfs_params* params);
@@ -208,25 +210,32 @@ char mountPoint[3] = "a:";
 
 DWORD WINAPI ThreadProc(LPVOID lpParam)
 {
-    mount_params* mp = (mount_params*)lpParam;
+    if (!lpParam)
+    {
+        debug(D_ERROR, "Invalid parameters passed to ThreadPorc");
+        return 1;
+    }
+
+    mount_params mp = *((mount_params*)lpParam);
+    memset(lpParam, 0, sizeof(mount_params));
     pfs_params params = {0,};
     char auth[MAX_PATH]="";
     size_t cachesize;
     char* argv[2] = {(char *)"pfs", mountPoint};
 
-    if (mp && isFreeDevice(getMountLetter(mp->options)))
+    if (isFreeDevice(getMountLetter(mp.options)))
     {
-        mountPoint[0] = getMountLetter(mp->options);
+        mountPoint[0] = getMountLetter(mp.options);
     }
     else
     {
         mountPoint[0] = getFirstFreeDevice();
     }
 
-    memcpy(auth, mp->auth, sizeof(mp->auth));
+    memcpy(auth, mp.auth, sizeof(mp.auth));
     debug(D_NOTICE, "auth:%s", auth);
 
-    cachesize = mp->cache;
+    cachesize = mp.cache;
     debug(D_NOTICE, "cache size:%u", cachesize);
 
     // Stored data is in MB - convert to bytes
@@ -235,7 +244,7 @@ DWORD WINAPI ThreadProc(LPVOID lpParam)
         cachesize *= 1024*1024;
     }
 
-    params.use_ssl = (mp->options & OPT_MASK_OPTS) != 0;
+    params.use_ssl = (mp.options & OPT_MASK_OPTS) != 0;
     debug(D_NOTICE, "use SSL :%d", params.use_ssl);
 
     if (auth[0])
@@ -307,7 +316,7 @@ VOID unmount()
 
     if (hMountThread && hMountThread != INVALID_HANDLE_VALUE)
     {
-        WaitForSingleObject(hMountThread, 2000);
+        WaitForSingleObject(hMountThread, 1000);
         debug(D_NOTICE, "Closing thread");
         TerminateThread(hMountThread, 0);
         CloseHandle(hMountThread);
@@ -318,6 +327,8 @@ VOID unmount()
     BroadcastSystemMessage(0, &recipients, WM_DEVICECHANGE, DBT_CONFIGCHANGED, 0);
 
     debug(D_NOTICE, "Unmounted!");
+    Sleep(2000);
+    exit(0);
 }
 
 VOID disconnect_pipe()
@@ -414,12 +425,14 @@ VOID WINAPI ServiceStart(const wchar_t * config_file)
             {
                 if ((params.options & OPT_MASK_COMMAND) == OPT_COMMAND_MOUNT)
                 {
-                    debug(D_NOTICE, "Service main - mounting");
+                    debug(D_NOTICE, "Service main - mounting, %s", params.auth);
                     mount(&params);
+                    Sleep(200); // wait thread to start
                 }
                 else
                 {
                     debug(D_NOTICE, "Service main - unmounting");
+                    DisconnectNamedPipe(hPipe);
                     unmount();
                 }
             }
