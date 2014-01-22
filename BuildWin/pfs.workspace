@@ -9,5 +9,6 @@
 			<Depends filename="pfs.cbp" />
 			<Depends filename="fuse4Win.cbp" />
 		</Project>
+		<Project filename="../../psink/psink.cbp" />
 	</Workspace>
 </CodeBlocks_workspace_file>

@@ -107,7 +107,7 @@ static ssize_t readallfd(int sock, void *ptr, size_t len){
     ret=recv(sock, ptr+rd, len-rd, 0);
     if (ret==0){
       debug(D_WARNING, "remote end closed connection");
-      return -1;
+      return rd;
     }
     else if (ret==-1){
       debug(D_WARNING, "recv failed: %s", strerror(errno));
@@ -140,7 +140,7 @@ static ssize_t readallssl(SSL *ssl, void *ptr, size_t len){
       }
       else
         debug(D_WARNING, "SSL error %d", err);
-      return -1;
+      return err==SSL_ERROR_ZERO_RETURN ? rd : -1;
     }
     rd+=ret;
   }

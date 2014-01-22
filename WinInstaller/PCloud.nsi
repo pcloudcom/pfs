@@ -73,9 +73,12 @@ FunctionEnd
 
 Section "Install"
   SetOutPath $INSTDIR
+  ${If} ${IsWinXP}
+    IfFileExists $INSTDIR\win_service-xp.exe Installed
+  ${Else}
+    IfFileExists $INSTDIR\win_service.exe Installed
+  ${EndIf}
   
-  IfFileExists $INSTDIR\win_service.exe Installed
-
   WriteRegStr HKLM "SOFTWARE\PCloud\pCloud" "Install_Dir" "$INSTDIR"
 
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\PCloud" "DisplayName" "PCloud Service"
@@ -87,23 +90,27 @@ Section "Install"
   File "$%TEMP%\pfs-uninst.exe"
 !endif
   
-  File *.dll
-  File start.bat
-  File stop.bat
-  File restart.bat
+  File libeay32.dll
+  File libgcc_s_dw2-1.dll
+  File libssl32.dll
+  File libstdc++-6.dll
+  File libwinpthread-1.dll
+  File pthreadGC2.dll
+  File pthreadGCE2.dll
+  File ssleay32.dll
   
   ${If} ${IsWinXP}
-    File VCRedist.exe
+    File .\XP\VCRedist.exe
+	File .\XP\fuse4Win-xp.dll
+	File .\XP\win_service-xp.exe
     MessageBox MB_OK|MB_ICONINFORMATION "The redistributable package will be installed. It could take several minutes. Please be patient."
     nsExec::Exec '"$INSTDIR\VCRedist.exe" /q'
   ${Else}
-    File CreateTask.bat
-    File start.xml
-    File end.xml
+    File fuse4Win.dll
+	File win_service.exe
   ${EndIf}
   
   File DokanInstall.exe
-  File win_service.exe
   File pCloud.exe
   
   ClearErrors
@@ -113,7 +120,11 @@ Section "Install"
     Quit
   noError:
   
-  nsExec::Exec '"$INSTDIR\start.bat" "$INSTDIR"'
+  ${If} ${IsWinXP}
+    nsExec::Exec '"$INSTDIR\win_service-xp.exe" -install -run'
+  ${Else}
+    nsExec::Exec '"$INSTDIR\win_service.exe" -install -run'
+  ${EndIf}
   
   Delete  "$INSTDIR\DokanInstall.exe"
   
@@ -122,19 +133,9 @@ Section "Install"
   CreateShortCut "$DESKTOP\pCloud.lnk" "$INSTDIR\pCloud.exe" "" ""
   CreateShortCut "$SMPROGRAMS\PCloud\uninstall.lnk" "$INSTDIR\pfs-uninst.exe" "" ""
 
-  ${If} ${IsWinXP}
-    MessageBox MB_YESNO|MB_ICONQUESTION "Do you want to run pCloud automatically when Windows starts?" IDNO NoStartupXp
-      CreateShortCut "$SMSTARTUP\pCloud.lnk" "$INSTDIR\pCloud.exe" "" ""
-    NoStartupXp:
-  ${Else}
-    MessageBox MB_YESNO|MB_ICONQUESTION "Do you want to run pCloud automatically when Windows starts?" IDNO NoStartup
-	  WriteRegStr "HKLM" "SOFTWARE\Microsoft\Windows\CurrentVersion\Run" "pCloud" "$INSTDIR\pCloud.exe"
-      ;nsExec::Exec '"$INSTDIR\CreateTask.bat" "$INSTDIR\pCloud.exe"'
-    NoStartup:
-    Delete start.xml
-    Delete end.xml
-    Delete CreateTask.bat
-  ${EndIf}
+  MessageBox MB_YESNO|MB_ICONQUESTION "Do you want to run pCloud automatically when Windows starts?" IDNO NoStartup
+	WriteRegStr "HKLM" "SOFTWARE\Microsoft\Windows\CurrentVersion\Run" "pCloud" "$INSTDIR\pCloud.exe"
+  NoStartup:
   
   
   MessageBox MB_YESNO|MB_ICONQUESTION "A computer restart is required. Do you want to restart now?" IDNO NoReboot
@@ -166,28 +167,25 @@ Section "Uninstall"
   Delete "$SMPROGRAMS\PCloud\uninstall.lnk"
   RMDir "$SMPROGRAMS\PCloud"
 
-  DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\PCloud"
-  DeleteRegKey HKCU "SOFTWARE\PCloud"
-  DeleteRegKey HKLM "SOFTWARE\PCloud"
+  DeleteRegKey   HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\PCloud"
+  DeleteRegKey   HKCU "SOFTWARE\PCloud"
+  DeleteRegKey 	 HKLM "SOFTWARE\PCloud"
+  DeleteRegValue HKLM "SOFTWARE\Microsoft\Windows\CurrentVersion\Run" "pCloud"
 
-  nsExec::Exec '"$INSTDIR\stop.bat" "$INSTDIR"'
-  ${If} ${IsWinXP}
-    Delete "$SMSTARTUP\pCloud.lnk"
-  ${Else}
-    nsExec::Exec 'schtasks /delete /tn "PCloud" /F'
-  ${EndIf}
   
   ${If} ${IsWinXP}
-    MessageBox MB_OK|MB_ICONINFORMATION "The redistributable package will be removed. It could take several minutes. Please be patient."
+    nsExec::Exec '"$INSTDIR\win_service-xp.exe" -remove'
+	MessageBox MB_OK|MB_ICONINFORMATION "The redistributable package will be removed. It could take several minutes. Please be patient."
     nsExec::Exec '"$INSTDIR\VCRedist.exe" /qu'
+  ${Else}
+    nsExec::Exec '"$INSTDIR\win_service.exe" -remove'
   ${EndIf}
-  
+    
   Delete "$INSTDIR\*.*"
     
   RMDir "$INSTDIR"
   Exec '"$PROGRAMFILES\Dokan\DokanLibrary\DokanUninstall.exe" /S'
-  
-  
+
 NoStop:
   Quit
 SectionEnd

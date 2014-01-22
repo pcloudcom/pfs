@@ -1004,6 +1004,7 @@ typedef struct
     char message[4*MAX_PATH];
 } notification;
 
+#ifdef _USE_PIPE
 static void send_notification_pipe(const notification* notify){
   DWORD  mode, written, total;
   const wchar_t* pipename = PIPE_NAME;
@@ -1038,6 +1039,12 @@ static void send_notification_pipe(const notification* notify){
     FlushFileBuffers(hPipe);
   }
 }
+#else
+static void send_notification_pipe(const notification* notify)
+{
+    UNUSED_PARAM(notify);
+}
+#endif //_USE_PIPE
 
 static void send_notification(node * item, LONG event1, LONG event2){
   notification n;

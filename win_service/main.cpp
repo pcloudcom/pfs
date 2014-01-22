@@ -4,8 +4,6 @@
 #include <stdint.h>
 #include <Dbt.h>
 
-#define DEBUG_LEVEL D_NOTICE
-
 #include "pfs.h"
 
 extern "C" int pfs_main(int argc, char **argv, const pfs_params* params);
