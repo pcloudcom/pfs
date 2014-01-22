@@ -50,7 +50,6 @@
 			<Add option="-Wall" />
 			<Add option="-fexceptions" />
 			<Add option="-DUNICODE" />
-			<Add option="-DDEBUG_LEVEL=D_NOTICE" />
 			<Add directory="../include" />
 		</Compiler>
 		<Linker>

@@ -102,14 +102,13 @@
 				</Compiler>
 				<Linker>
 					<Add option="-s" />
-					<Add library=".\bin\Release\libfuse4Win.a" />
+					<Add library=".\bin\Release\libfuse4Win-xp.a" />
 				</Linker>
 			</Target>
 		</Build>
 		<Compiler>
 			<Add option="-Wall" />
 			<Add option="-DUNICODE" />
-			<Add option="-DDEBUG_LEVEL=D_NOTICE" />
 			<Add directory="../include" />
 			<Add directory="../lib/Fuse4Win" />
 			<Add directory="../include/win" />

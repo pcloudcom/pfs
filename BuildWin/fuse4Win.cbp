@@ -106,7 +106,6 @@
 			</Target>
 		</Build>
 		<Compiler>
-			<Add option="-DDEBUG_LEVEL=D_NOTICE" />
 			<Add directory="../include/win" />
 			<Add directory="../lib/Fuse4Win" />
 		</Compiler>
