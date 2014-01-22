@@ -1042,7 +1042,7 @@ static void send_notification_pipe(const notification* notify){
 #else
 static void send_notification_pipe(const notification* notify)
 {
-    UNUSED_PARAM(notify);
+    (void)(notify);
 }
 #endif //_USE_PIPE
 
