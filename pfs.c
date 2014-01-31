@@ -1039,14 +1039,10 @@ static void send_notification_pipe(const notification* notify){
     FlushFileBuffers(hPipe);
   }
 }
-#else
-static void send_notification_pipe(const notification* notify)
-{
-    (void)(notify);
-}
 #endif //_USE_PIPE
 
 static void send_notification(node * item, LONG event1, LONG event2){
+#ifdef _USE_PIPE
   notification n;
   char * path = n.message;
   n.event1 = event1;
@@ -1058,6 +1054,7 @@ static void send_notification(node * item, LONG event1, LONG event2){
   n.size = strlen(n.message)+1+3*sizeof(uint32_t);
 
   send_notification_pipe(&n);
+#endif
 }
 
 static void notify_create_item(node * item){
