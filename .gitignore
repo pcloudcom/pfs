@@ -1,0 +1,4 @@
+*~
+debian/*.log
+debian/*.substvars
+debian/files

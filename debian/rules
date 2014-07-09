@@ -16,5 +16,8 @@ manpage.8: debian/manpage.xml
 	$(XP) $(DB2MAN) $<
 
 
-%: manpage.8
-	dh $@ 
+overide_dh_binary-indep: manpage.8
+	dh binary-indep
+
+%:
+	dh $@

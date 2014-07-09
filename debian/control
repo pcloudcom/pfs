@@ -1,5 +1,5 @@
 Source: pcloudfs
-Section: unknown
+Section: network
 Priority: extra
 Maintainer: Vasil Kolev <vasil@mobileinno.com>
 Build-Depends: debhelper (>= 7.0.50~), libssl-dev, libfuse-dev, pkg-config, xsltproc, docbook-xsl
