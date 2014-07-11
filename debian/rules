@@ -7,7 +7,7 @@
 # This special exception was added by Craig Small in version 0.37 of dh-make.
 
 # Uncomment this to turn on verbose mode.
-#export DH_VERBOSE=1
+export DH_VERBOSE=1
 
 DB2MAN = /usr/share/sgml/docbook/stylesheet/xsl/docbook-xsl/manpages/docbook.xsl
 XP     = xsltproc -''-nonet -''-param man.charmap.use.subset "0"
@@ -16,8 +16,8 @@ manpage.8: debian/manpage.xml
 	$(XP) $(DB2MAN) $<
 
 
-overide_dh_binary-indep: manpage.8
-	dh binary-indep
+override_dh_auto_build: manpage.8
+	dh_auto_build
 
 %:
 	dh $@
