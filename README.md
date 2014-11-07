@@ -58,3 +58,47 @@ Activate it via:
 ```sh
 (sudo) systemctl enable pfs.service
 ```
+
+
+## Compilation and manual mount on debian/ubuntu
+
+
+### Install dependencies and compile pfs
+```sh
+(sudo) apt-get install fuse-dbg libssl-dbg
+git clone https://github.com/pcloudfs/pfs.git
+cd pfs
+make
+(sudo) make install
+```
+
+### Get auth token
+
+```sh 
+curl https://api.pcloud.com/userinfo?getauth=1&username=<email>&password=<password>
+```
+
+You will see output similar to the following:
+````json
+{
+	"auth": "PhOAAAZ2YPXZEf999Rj8Ewz7abHR28hgNmxN9YGX",
+	"emailverified": true,
+	"quota": 11811160064,
+	"result": 0,
+	"premium": false,
+	"usedquota": 1590902549,
+	"language": "en",
+	"userid": 12345,
+	"email": "my@email.com",
+	"registered": "Thu, 01 Nov 2014 10:10:10 +0000"
+}
+````
+
+Take note of the `auth` token which you need to mount the drive.
+
+### Mount pDrive
+
+```sh
+mkdir /mnt/pdrive
+mount.pfs --auth <you auth token here> /mnt/pdrive
+```
