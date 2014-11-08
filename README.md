@@ -2,6 +2,8 @@ pfs
 ===
 
 pCloud filesystem client
+NOTE: this filesystem is obsolete. The new version can be found in the
+pclsync repo at https://github.com/pcloudcom/pclsync .
 
 To compile, you need fuse and the openssl headers. In debian,
 they're in libssl-dev and libfuse-dev, in fedora in fuse-devel and
@@ -26,6 +28,8 @@ curl https://api.pcloud.com/userinfo?getauth=1&username=<email>&password=<passwo
 ```
 
 And keep the auth bit.
+Note that this is not required, but otherwise you'll have to put your username
+and password in the service file.
 
 ### Autostart
 
