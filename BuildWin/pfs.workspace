@@ -7,7 +7,6 @@
 		<Project filename="fuse4Win.cbp" />
 		<Project filename="win_service.cbp">
 			<Depends filename="pfs.cbp" />
-			<Depends filename="fuse4Win.cbp" />
 		</Project>
 	</Workspace>
 </CodeBlocks_workspace_file>

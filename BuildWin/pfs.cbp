@@ -119,6 +119,10 @@
 			<Add library="libcrypto.a" />
 			<Add library="libpthread.a" />
 		</Linker>
+		<Unit filename="../include/binapi.h" />
+		<Unit filename="../include/compat.h" />
+		<Unit filename="../include/pfs.h" />
+		<Unit filename="../include/sockets.h" />
 		<Unit filename="../lib/binapi.c">
 			<Option compilerVar="CC" />
 		</Unit>
@@ -128,6 +132,7 @@
 		<Unit filename="../settings.c">
 			<Option compilerVar="CC" />
 		</Unit>
+		<Unit filename="../settings.h" />
 		<Unit filename="../socetpair.c">
 			<Option compilerVar="CC" />
 		</Unit>

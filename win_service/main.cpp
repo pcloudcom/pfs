@@ -12,13 +12,7 @@ extern "C" int pfs_main(int argc, char **argv, const pfs_params* params);
 #define SZSERVICEDISPLAYNAME   L"PCloud File System"
 #define DOKAN_DLL              L"dokan.dll"
 
-#define KEY_USER               "username"
-#define KEY_PASS               "pass"
-#define KEY_AUTH               "auth"
-#define KEY_CACHE_SIZE         "cachesize"
-#define KEY_USE_SSL            "ssl"
 #define KEY_DELETE             "del"
-#define KEY_PATH               "path"
 
 #ifndef ENOTCONN
 #   define ENOTCONN        107
@@ -204,6 +198,54 @@ static void setVolumeIcon(char letter, bool create)
 }
 
 
+static void setRecycleBin(char letter, bool create)
+{
+#ifndef _USE_PIPE
+    HRESULT hr;
+    DWORD data;
+    HKEY hKey;
+
+    char root[] = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\BitBucket";
+    char path[] = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\BitBucket\\a";
+    path[sizeof(path)-2] = letter;
+
+    if (create)
+    {
+        hr = RegOpenKeyExA(HKEY_LOCAL_MACHINE, root, 0, KEY_ALL_ACCESS, &hKey);
+        debug(D_NOTICE, "RegOpenKeyExA - %ld, %s", hr, path);
+        if (hr == ERROR_FILE_NOT_FOUND)
+        {
+            hr = RegCreateKeyExA(HKEY_LOCAL_MACHINE, root, 0, NULL, 0, KEY_ALL_ACCESS, NULL, &hKey, NULL);
+            debug(D_NOTICE, "RegCreateKeyExA - %ld", hr);
+        }
+        if (!hr)
+        {
+            data = 0;
+            hr = RegSetValueExA(hKey, "UseGlobalSettings", 0, REG_DWORD, (LPBYTE)&data, 4);
+            debug(D_NOTICE, "RegSetValueExA - %ld", hr);
+            RegCloseKey(hKey);
+            if (!hr)
+            {
+                hr = RegCreateKeyExA(HKEY_LOCAL_MACHINE, path, 0, NULL, 0, KEY_ALL_ACCESS, NULL, &hKey, NULL);
+                debug(D_NOTICE, "RegCreateKeyExA - %ld", hr);
+                if(!hr)
+                {
+                    data = 1;
+                    hr = RegSetValueExA(hKey, "NukeOnDelete", 0, REG_DWORD, (LPBYTE)&data, 4);
+                    debug(D_NOTICE, "RegSetValueExA - %ld", hr);
+                    RegCloseKey(hKey);
+                }
+            }
+        }
+    }
+    else
+    {
+        hr = RegDeleteKeyA(HKEY_LOCAL_MACHINE, path);
+        debug(D_NOTICE, "RegDeleteKeyA - %ld", hr);
+    }
+#endif //_USE_PIPE
+}
+
 char mountPoint[3] = "a:";
 
 DWORD WINAPI ThreadProc(LPVOID lpParam)
@@ -259,8 +301,10 @@ DWORD WINAPI ThreadProc(LPVOID lpParam)
     params.cache_size = cachesize?cachesize:512*1024*1024;
 
     setVolumeIcon(mountPoint[0], true);
+    setRecycleBin(mountPoint[0], true);
     int res = pfs_main(2, argv, &params);
     setVolumeIcon(mountPoint[0], false);
+    setRecycleBin(mountPoint[0], false);
     if (res == ENOTCONN)
     {
         debug(D_NOTICE, "Send NotConnected msg");
@@ -335,6 +379,7 @@ VOID disconnect_pipe()
     {
         FlushFileBuffers(hPipe);
         DisconnectNamedPipe(hPipe);
+        CloseHandle(hPipe);
         hPipe = INVALID_HANDLE_VALUE;
     }
 }
@@ -453,6 +498,7 @@ cleanup:
     unmount();
 
     ReportStatusToSCMgr(SERVICE_STOPPED, NO_ERROR, 0);
+    storeKey(KEY_DELETE, "");
 
     debug(D_NOTICE, "Service main - exit");
 }
@@ -465,6 +511,7 @@ VOID WINAPI ServiceStop()
     disconnect_pipe();
     unmount();
     ReportStatusToSCMgr(SERVICE_STOPPED, NO_ERROR, 0);
+    storeKey(KEY_DELETE, "");
 }
 
 
@@ -641,6 +688,7 @@ VOID WINAPI service_main(DWORD dwArgc, LPTSTR *lpszArgv)
             ServiceStart(NULL);
 
         ReportStatusToSCMgr(SERVICE_STOPPED, dwErr, 0);
+        storeKey(KEY_DELETE, "");
     }
 }
 
@@ -686,7 +734,6 @@ int main(int argc, char* args[])
         if (buff[0] == '+')
         {
             debug (D_NOTICE, "Called main while service is stopping!");
-            storeKey(KEY_DELETE, "");
             return 1;
         }
 
