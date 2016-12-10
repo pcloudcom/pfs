@@ -3429,7 +3429,7 @@ void die_with_usage() {
 int pfs_main(int argc, char **argv, const pfs_params* params){
   int r = 0;
   binresult *res, *subres;
-  const char *pass = params->pass;
+  char *pass = params->pass;
 
   debug(D_NOTICE, "starting - argc: %d", argc);
   if (params->username && !pass)
@@ -3477,6 +3477,7 @@ int pfs_main(int argc, char **argv, const pfs_params* params){
   }else if(params->auth){
     auth = (char*)params->auth;
   }
+  memset(pass, '\0', strlen(pass));
 
   res=send_command(sock, "userinfo", P_STR("auth", auth));
   if(!res){
