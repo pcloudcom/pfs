@@ -3429,12 +3429,15 @@ void die_with_usage() {
 int pfs_main(int argc, char **argv, const pfs_params* params){
   int r = 0;
   binresult *res, *subres;
+  const char *pass = params->pass;
 
   debug(D_NOTICE, "starting - argc: %d", argc);
+  if (params->username && !pass)
+    pass = getpass("Password:");
   for (r = 0; r < argc; ++r)
     debug(D_NOTICE, "\t %s", argv[r]);
   if (params->username && params->pass)
-    debug(D_NOTICE, "username %s, password %s", params->username, params->pass);
+    debug(D_NOTICE, "username %s, password %s", params->username, pass);
   if (params->auth)
     debug(D_NOTICE, "auth %s", params->auth);
   if (params->cache_size)
@@ -3443,7 +3446,7 @@ int pfs_main(int argc, char **argv, const pfs_params* params){
     debug(D_NOTICE, "cache page size: %lu B", (unsigned long)params->page_size);
 
 
-  if ( !( params->auth || (params->username && params->pass)) )
+  if ( !( params->auth || (params->username && pass)) )
     die_with_usage();
 
   if (params->cache_size){
@@ -3469,8 +3472,8 @@ int pfs_main(int argc, char **argv, const pfs_params* params){
     return ENOTCONN;
   }
 
-  if (params->username && params->pass){
-    get_auth(params->username, params->pass);
+  if (params->username && pass){
+    get_auth(params->username, pass);
   }else if(params->auth){
     auth = (char*)params->auth;
   }
