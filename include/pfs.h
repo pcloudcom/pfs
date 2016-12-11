@@ -38,7 +38,7 @@ typedef struct
 {
     const char * auth;
     const char * username;
-    const char * pass;
+    char * pass;
     int use_ssl;
     size_t cache_size;
     size_t page_size;
